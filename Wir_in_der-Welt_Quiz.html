@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Wir in der Welt: wo liegt was auf der Weltkarte?</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:#F1F5F9;color:#1E293B}
+button{font-family:inherit;cursor:pointer}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.fade{animation:fadeIn 0.2s ease}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:#F1F5F9}
+::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:3px}
+table{border-collapse:collapse;width:100%}
+th{background:#F8FAFC;color:#475569;font-size:11px;font-weight:600;text-transform:uppercase;
+   letter-spacing:0.05em;padding:8px 10px;text-align:left;border-bottom:2px solid #E2E8F0;
+   position:sticky;top:0;z-index:2;white-space:nowrap}
+td{padding:7px 10px;font-size:12px;border-bottom:1px solid #F1F5F9;vertical-align:top;color:#334155}
+tr:hover td{background:#EFF6FF}
+.badge{display:inline-block;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:600;white-space:nowrap}
+.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;
+      background:#EEF2FF;color:#4338CA;margin:1px;white-space:nowrap}
+</style>
+
+<style>
+@media (max-width: 700px) {
+  .kview-split  { flex-direction: column !important; height: auto !important; }
+  .kview-map    { flex: none !important; width: 100% !important; height: 45vw !important; min-height: 280px; }
+  .kview-profil { width: 100% !important; min-width: 0 !important; max-height: none !important;
+                  border-top: 1px solid #E2E8F0; margin-top: 12px; }
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// ErrorBoundary: Zeigt Fehler statt schwarzem Bildschirm
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = {error:null}; }
+  static getDerivedStateFromError(e) { return {error:e}; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{padding:20,background:"#FEE2E2",margin:12,borderRadius:12,border:"1px solid #EF4444"}}>
+          <h3 style={{color:"#B91C1C",margin:"0 0 8px"}}>⚠️ Fehler gefunden!</h3>
+          <pre style={{fontSize:11,color:"#7F1D1D",whiteSpace:"pre-wrap",margin:0}}>
+            {this.state.error.toString()}
+          </pre>
+          <button onClick={()=>this.setState({error:null})} 
+            style={{marginTop:10,padding:"6px 12px",background:"#EF4444",color:"#fff",border:"none",borderRadius:6,cursor:"pointer"}}>
+            Zurück
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const LAENDER = [{"land":"Deutschland","iso2":"DE","k":"Europa","hs":"Berlin","gs":"Berlin","bev":84359400,"sys":"Föderale parlamentarische Republik","mr":{"s":94,"t":"Frei"},"pf":{"r":11,"p":83.85},"gi":{"st":["Berlin (Hauptstadtbüro)","Bonn","Bremen","Dresden","Düsseldorf","Frankfurt","Hamburg","Hannover","Karlsruhe","Köln","München","Nürnberg","Stuttgart"],"lei":"Imke Mohr (Reg. Deutschland)"},"bot":{"n":"k.A.","ti":"k.A.","o":"k.A."},"hpi":{"r":26,"s":48.5},"epi":{"r":3,"s":74.5}},{"land":"Algerien","iso2":"DZ","k":"Afrika","hs":"Algier","gs":"Algier","bev":46164219,"sys":"Präsidiale Republik","mr":{"s":33,"t":"Nicht frei"},"pf":{"r":138,"p":null},"gi":{"st":["Algier"],"lei":"Christiane Schulte"},"bot":{"n":"Georg Felsheim","ti":"Botschafter:in","o":"Algier"},"hpi":{"r":66,"s":38.9},"epi":{"r":100,"s":34.2}},{"land":"Angola","iso2":"AO","k":"Afrika","hs":"Luanda","gs":"Luanda","bev":36684202,"sys":"Präsidiale Republik","mr":{"s":32,"t":"Nicht frei"},"pf":{"r":100,"p":52.67},"gi":{"st":["Luanda"],"lei":"Julia Schreiner"},"bot":{"n":"Dr. Stefan Traumann","ti":"Botschafter:in","o":"Luanda"},"hpi":{"r":107,"s":31.2},"epi":{"r":138,"s":23.5}},{"land":"Burkina Faso","iso2":"BF","k":"Afrika","hs":"Ouagadougou","gs":"Ouagadougou","bev":22673762,"sys":"Militärische Übergangsregierung (seit Sept. 2022)","mr":{"s":27,"t":"Nicht frei"},"pf":{"r":104,"p":null},"gi":{"st":["Ouagadougou"],"lei":"Andreas Ströhl (Reg. Subsahara-Afrika)"},"bot":{"n":"Dietrich Becker","ti":"Botschafter:in","o":"Ouagadougou"},"hpi":{"r":92,"s":33.1},"epi":{"r":132,"s":25.8}},{"land":"Côte d'Ivoire","iso2":"CI","k":"Afrika","hs":"Yamoussoukro","gs":"Abidjan","bev":27478249,"sys":"Präsidiale Republik","mr":{"s":49,"t":"Teilweise frei"},"pf":{"r":64,"p":63.69},"gi":{"st":["Abidjan"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Matthias Veltin","ti":"Botschafter:in","o":"Abidjan"},"hpi":{"r":87,"s":33.8},"epi":{"r":140,"s":22.9}},{"land":"Ägypten","iso2":"EG","k":"Afrika","hs":"Kairo","gs":"Kairo","bev":105914499,"sys":"Präsidiale Republik","mr":{"s":23,"t":"Nicht frei"},"pf":{"r":170,"p":null},"gi":{"st":["Alexandria","Kairo"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Jürgen Schulz","ti":"Botschafter:in","o":"Kairo"},"hpi":{"r":71,"s":37.5},"epi":{"r":110,"s":31.9}},{"land":"Äthiopien","iso2":"ET","k":"Afrika","hs":"Addis Abeba","gs":"Addis Abeba","bev":126527060,"sys":"Föderale parlamentarische Republik","mr":{"s":25,"t":"Nicht frei"},"pf":{"r":145,"p":null},"gi":{"st":["Addis Abeba"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Birgitt Ory","ti":"Botschafter:in","o":"Addis Abeba"},"hpi":{"r":99,"s":32.1},"epi":{"r":158,"s":21.2}},{"land":"Ghana","iso2":"GH","k":"Afrika","hs":"Accra","gs":"Accra","bev":33475870,"sys":"Präsidiale Republik","mr":{"s":82,"t":"Frei"},"pf":{"r":52,"p":67.13},"gi":{"st":["Accra"],"lei":"Maximilian Röttger"},"bot":{"n":"Frederik Landshöft","ti":"Botschafter:in","o":"Accra"},"hpi":{"r":71,"s":37.5},"epi":{"r":113,"s":31.2}},{"land":"Kamerun","iso2":"CM","k":"Afrika","hs":"Yaoundé","gs":"Douala","bev":27914536,"sys":"Präsidiale Republik","mr":{"s":23,"t":"Nicht frei"},"pf":{"r":131,"p":null},"gi":{"st":["Yaoundé"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Christian Sedat","ti":"Botschafter:in","o":"Yaoundé"},"hpi":{"r":95,"s":32.5},"epi":{"r":155,"s":21.5}},{"land":"Kenia","iso2":"KE","k":"Afrika","hs":"Nairobi","gs":"Nairobi","bev":54027487,"sys":"Präsidiale Republik","mr":{"s":48,"t":"Teilweise frei"},"pf":{"r":103,"p":null},"gi":{"st":["Nairobi"],"lei":"Cristina Nord"},"bot":{"n":"Sebastian Groth","ti":"Botschafter:in","o":"Nairobi"},"hpi":{"r":69,"s":38.2},"epi":{"r":102,"s":33.8}},{"land":"Libyen","iso2":"LY","k":"Afrika","hs":"Tripolis","gs":"Tripolis","bev":7361263,"sys":"Übergangsstaat (gespaltene Regierung)","mr":{"s":10,"t":"Nicht frei"},"pf":{"r":153,"p":null},"gi":{"st":["Tripolis"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Ralph-Joseph Tarraf","ti":"Botschafter:in","o":"Tripolis"},"hpi":{},"epi":{"r":115,"s":30.8}},{"land":"Madagaskar","iso2":"MG","k":"Afrika","hs":"Antananarivo","gs":"Antananarivo","bev":28812195,"sys":"Semipräsidentielle Republik","mr":{"s":42,"t":"Teilweise frei"},"pf":{"r":107,"p":null},"gi":{"st":["Antananarivo"],"lei":"Andreas Ströhl (Reg. Subsahara-Afrika)"},"bot":{"n":"Oliver Knoerich","ti":"Botschafter:in","o":"Antananarivo"},"hpi":{"r":103,"s":31.5},"epi":{"r":82,"s":39.8}},{"land":"Marokko","iso2":"MA","k":"Afrika","hs":"Rabat","gs":"Casablanca","bev":37840044,"sys":"Konstitutionelle Monarchie","mr":{"s":37,"t":"Nicht frei"},"pf":{"r":134,"p":null},"gi":{"st":["Casablanca","Rabat"],"lei":"Philip Küppers"},"bot":{"n":"Robert Dölger","ti":"Botschafter:in","o":"Rabat"},"hpi":{"r":60,"s":40.2},"epi":{"r":88,"s":37.9}},{"land":"Mosambik","iso2":"MZ","k":"Afrika","hs":"Maputo","gs":"Maputo","bev":33897354,"sys":"Präsidiale Republik","mr":{"s":44,"t":"Teilweise frei"},"pf":{"r":116,"p":null},"gi":{"st":["Maputo"],"lei":"Lucy Knollmeyer"},"bot":{"n":"Ronald Münch","ti":"Botschafter:in","o":"Maputo"},"hpi":{"r":115,"s":30.5},"epi":{"r":158,"s":21.2}},{"land":"Namibia","iso2":"NA","k":"Afrika","hs":"Windhoek","gs":"Windhoek","bev":2887525,"sys":"Präsidiale Republik","mr":{"s":76,"t":"Frei"},"pf":{"r":28,"p":75.35},"gi":{"st":["Windhoek"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Dr. Thorsten Hutter","ti":"Botschafter:in","o":"Windhoek"},"hpi":{"r":75,"s":36.2},"epi":{"r":105,"s":33.1}},{"land":"Nigeria","iso2":"NG","k":"Afrika","hs":"Abuja","gs":"Lagos","bev":223804632,"sys":"Föderale Präsidialrepublik","mr":{"s":43,"t":"Teilweise frei"},"pf":{"r":112,"p":null},"gi":{"st":["Lagos"],"lei":"Nadine Siegert"},"bot":{"n":"Annett Günther","ti":"Botschafter:in","o":"Abuja"},"hpi":{"r":105,"s":31.1},"epi":{"r":175,"s":19.8}},{"land":"Ruanda","iso2":"RW","k":"Afrika","hs":"Kigali","gs":"Kigali","bev":14094683,"sys":"Präsidiale Republik","mr":{"s":23,"t":"Nicht frei"},"pf":{"r":146,"p":null},"gi":{"st":["Kigali"],"lei":"Anisha Soff-Ochieng"},"bot":{"n":"Heike Uta Dettmann","ti":"Botschafter:in","o":"Kigali"},"hpi":{"r":70,"s":37.8},"epi":{"r":99,"s":34.8}},{"land":"Senegal","iso2":"SN","k":"Afrika","hs":"Dakar","gs":"Dakar","bev":17763163,"sys":"Präsidiale Republik","mr":{"s":71,"t":"Frei"},"pf":{"r":74,"p":59.43},"gi":{"st":["Dakar"],"lei":"Dr. Stefanie Peter"},"bot":{"n":"Kai Baldow","ti":"Botschafter:in","o":"Dakar"},"hpi":{"r":62,"s":39.8},"epi":{"r":107,"s":32.3}},{"land":"Südafrika","iso2":"ZA","k":"Afrika","hs":"Pretoria","gs":"Johannesburg","bev":60414495,"sys":"Präsidiale Republik","mr":{"s":79,"t":"Frei"},"pf":{"r":27,"p":75.71},"gi":{"st":["Johannesburg (Regionalsitz Subsahara-Afrika)","Kapstadt"],"lei":"Dr. Andreas Ströhl (Reg. Subsahara-Afrika)"},"bot":{"n":"Andreas Peschke","ti":"Botschafter:in","o":"Pretoria"},"hpi":{"r":79,"s":35.1},"epi":{"r":85,"s":38.9}},{"land":"Sudan","iso2":"SD","k":"Afrika","hs":"Khartum","gs":"Omdurman","bev":48109006,"sys":"Militärische Übergangsregierung / Bürgerkrieg (seit Apr. 2023)","mr":{"s":2,"t":"Nicht frei"},"pf":{"r":156,"p":null},"gi":{"st":["Khartum (Betrieb eingeschränkt)"],"lei":"Andreas Ströhl (Reg. Subsahara-Afrika)"},"bot":{"n":"David Schwake","ti":"Botschafter:in","o":"Khartum"},"hpi":{"r":119,"s":30.1},"epi":{"r":165,"s":22.1}},{"land":"Tansania","iso2":"TZ","k":"Afrika","hs":"Dodoma","gs":"Daressalam","bev":63298550,"sys":"Präsidiale Republik","mr":{"s":37,"t":"Nicht frei"},"pf":{"r":95,"p":53.68},"gi":{"st":["Daressalam"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Thomas Terstegen","ti":"Botschafter:in","o":"Daressalam"},"hpi":{"r":83,"s":34.5},"epi":{"r":130,"s":26.8}},{"land":"Togo","iso2":"TG","k":"Afrika","hs":"Lomé","gs":"Lomé","bev":8848699,"sys":"Präsidiale Republik","mr":{"s":36,"t":"Nicht frei"},"pf":{"r":109,"p":null},"gi":{"st":["Lomé"],"lei":"Andreas Ströhl (Reg. Subsahara-Afrika)"},"bot":{"n":"Dr. Claudius Fischbach","ti":"Botschafter:in","o":"Lomé"},"hpi":{"r":94,"s":32.8},"epi":{"r":145,"s":22.8}},{"land":"Tunesien","iso2":"TN","k":"Afrika","hs":"Tunis","gs":"Tunis","bev":12046656,"sys":"Präsidiale Republik (zunehmend autoritär)","mr":{"s":57,"t":"Teilweise frei"},"pf":{"r":129,"p":null},"gi":{"st":["Tunis"],"lei":"Andrea Jacob"},"bot":{"n":"Elisabeth Wolbers","ti":"Botschafter:in","o":"Tunis"},"hpi":{"r":63,"s":39.7},"epi":{"r":79,"s":40.3}},{"land":"Uganda","iso2":"UG","k":"Afrika","hs":"Kampala","gs":"Kampala","bev":48582334,"sys":"Präsidiale Republik","mr":{"s":27,"t":"Nicht frei"},"pf":{"r":143,"p":null},"gi":{"st":["Kampala"],"lei":"Andreas Ströhl (Reg. Subsahara-Afrika)"},"bot":{"n":"Matthias Schauer","ti":"Botschafter:in","o":"Kampala"},"hpi":{"r":77,"s":35.5},"epi":{"r":128,"s":27.5}},{"land":"Simbabwe","iso2":"ZW","k":"Afrika","hs":"Harare","gs":"Harare","bev":16320537,"sys":"Präsidiale Republik","mr":{"s":30,"t":"Nicht frei"},"pf":{"r":130,"p":null},"gi":{"st":["Harare"],"lei":"Andreas Ströhl (Reg. Subsahara-Afrika)"},"bot":{"n":"Christoph Retzlaff","ti":"Botschafter:in","o":"Harare"},"hpi":{"r":134,"s":27.8},"epi":{"r":155,"s":21.5}},{"land":"Kanada","iso2":"CA","k":"Nordamerika","hs":"Ottawa","gs":"Toronto","bev":38781292,"sys":"Föderale parlamentarische Konstitutionelle Monarchie","mr":{"s":98,"t":"Frei"},"pf":{"r":21,"p":78.75},"gi":{"st":["Montréal","Ottawa","Toronto"],"lei":"Nadja Furth / Nina Wichmann"},"bot":{"n":"Tjorven Bellmann / Matthias Lüttenberg","ti":"Botschafter:in","o":"Ottawa"},"hpi":{"r":47,"s":44.0},"epi":{"r":28,"s":61.1}},{"land":"Mexiko","iso2":"MX","k":"Nordamerika","hs":"Mexiko-Stadt","gs":"Mexiko-Stadt","bev":128455567,"sys":"Föderale Präsidialrepublik","mr":{"s":55,"t":"Teilweise frei"},"pf":{"r":124,"p":null},"gi":{"st":["Guadalajara","Mexiko-Stadt (Regionalsitz)"],"lei":"Pia Entenmann (Reg. Mexiko/ZA/Karibik)"},"bot":{"n":"Dr. Clemens von Goetze","ti":"Botschafter:in","o":"Mexiko-Stadt"},"hpi":{"r":27,"s":47.5},"epi":{"r":50,"s":50.1}},{"land":"USA","iso2":"US","k":"Nordamerika","hs":"Washington D.C.","gs":"New York City","bev":334914895,"sys":"Föderale Präsidialrepublik","mr":{"s":83,"t":"Frei"},"pf":{"r":57,"p":65.49},"gi":{"st":["Atlanta","Boston","Chicago","Los Angeles","New York (Goethe-Haus)","San Francisco"],"lei":"Klaus Krischok (Reg. Nordamerika)"},"bot":{"n":"Jens Hanefeld","ti":"Botschafter:in","o":"Washington D.C."},"hpi":{"r":71,"s":36.9},"epi":{"r":35,"s":57.2}},{"land":"Costa Rica","iso2":"CR","k":"Mittelamerika","hs":"San José","gs":"San José","bev":5212173,"sys":"Präsidiale Republik","mr":{"s":91,"t":"Frei"},"pf":{"r":36,"p":73.09},"gi":{"st":["San José (Regionalsitz Zentralamerika & Karibik)"],"lei":"Sören Krämer"},"bot":{"n":"Daniel Kriener","ti":"Botschafter:in","o":"San José"},"hpi":{"r":4,"s":54.1},"epi":{"r":57,"s":47.9}},{"land":"Kuba","iso2":"CU","k":"Mittelamerika","hs":"Havanna","gs":"Havanna","bev":11089511,"sys":"Sozialistische Einparteienrepublik","mr":{"s":12,"t":"Nicht frei"},"pf":{"r":165,"p":null},"gi":{"st":["Havanna"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Dr. Frank Rückert","ti":"Botschafter:in","o":"Havanna"},"hpi":{"r":20,"s":49.2},"epi":{"r":54,"s":49.1}},{"land":"Argentinien","iso2":"AR","k":"Südamerika","hs":"Buenos Aires","gs":"Buenos Aires","bev":45773884,"sys":"Föderale Präsidialrepublik","mr":{"s":83,"t":"Frei"},"pf":{"r":87,"p":56.14},"gi":{"st":["Buenos Aires (Regionalsitz Südliches Südamerika)","Córdoba","Mendoza","San Juan"],"lei":"Friso Maecker"},"bot":{"n":"Dieter Lamlé","ti":"Botschafter:in","o":"Buenos Aires"},"hpi":{"r":37,"s":45.2},"epi":{"r":62,"s":46.1}},{"land":"Bolivien","iso2":"BO","k":"Südamerika","hs":"Sucre (Verfassung) / La Paz (Regierung)","gs":"Santa Cruz de la Sierra","bev":12388571,"sys":"Präsidiale Republik","mr":{"s":64,"t":"Teilweise frei"},"pf":{"r":93,"p":54.09},"gi":{"st":["La Paz","Santa Cruz de la Sierra"],"lei":"Isabel Kielian"},"bot":{"n":"Dr. José Schulz","ti":"Botschafter:in","o":"La Paz"},"hpi":{"r":38,"s":44.9},"epi":{"r":80,"s":40.1}},{"land":"Brasilien","iso2":"BR","k":"Südamerika","hs":"Brasília","gs":"São Paulo","bev":216422446,"sys":"Präsidiale föderale Republik","mr":{"s":72,"t":"Frei"},"pf":{"r":63,"p":63.8},"gi":{"st":["São Paulo (Regionalsitz Südamerika)","Rio de Janeiro","Salvador","Porto Alegre","Curitiba","Brasília"],"lei":"Matthias Makowski"},"bot":{"n":"Bettina Cadenbach","ti":"Botschafterin","o":"Brasília"},"hpi":{"r":30,"s":46.8},"epi":{"r":67,"s":43.9}},{"land":"Chile","iso2":"CL","k":"Südamerika","hs":"Santiago de Chile","gs":"Santiago de Chile","bev":19960889,"sys":"Präsidiale Republik","mr":{"s":92,"t":"Frei"},"pf":{"r":69,"p":62.25},"gi":{"st":["Concepción","Santiago de Chile (Regionalsitz)"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Susanne Fries-Gaier","ti":"Botschafter:in","o":"Santiago de Chile"},"hpi":{"r":10,"s":51.3},"epi":{"r":58,"s":47.5}},{"land":"Kolumbien","iso2":"CO","k":"Südamerika","hs":"Bogotá","gs":"Bogotá","bev":51874024,"sys":"Präsidiale Republik","mr":{"s":67,"t":"Teilweise frei"},"pf":{"r":115,"p":null},"gi":{"st":["Bogotá"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Martina Klumpp","ti":"Botschafter:in","o":"Bogotá"},"hpi":{"r":32,"s":50.3},"epi":{"r":66,"s":44.2}},{"land":"Ecuador","iso2":"EC","k":"Südamerika","hs":"Quito","gs":"Guayaquil","bev":18001000,"sys":"Präsidiale Republik","mr":{"s":52,"t":"Teilweise frei"},"pf":{"r":94,"p":53.76},"gi":{"st":["Quito"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Jens Peter Lütkenherm","ti":"Botschafter:in","o":"Quito"},"hpi":{"r":28,"s":47.1},"epi":{"r":74,"s":41.5}},{"land":"Paraguay","iso2":"PY","k":"Südamerika","hs":"Asunción","gs":"Asunción","bev":6861524,"sys":"Präsidiale Republik","mr":{"s":67,"t":"Teilweise frei"},"pf":{"r":84,"p":56.84},"gi":{"st":["Asunción"],"lei":"Simone Herdrich"},"bot":{"n":"Dr. Gordon Kricke","ti":"Botschafter:in","o":"Asunción"},"hpi":{"r":23,"s":48.3},"epi":{"r":70,"s":42.8}},{"land":"Peru","iso2":"PE","k":"Südamerika","hs":"Lima","gs":"Lima","bev":33359418,"sys":"Präsidiale Republik","mr":{"s":68,"t":"Teilweise frei"},"pf":{"r":130,"p":null},"gi":{"st":["Arequipa","Cusco","Lima (Regionalsitz Andenregion)"],"lei":"Juliane Kiss"},"bot":{"n":"Sabine Bloch","ti":"Botschafter:in","o":"Lima"},"hpi":{"r":35,"s":45.8},"epi":{"r":76,"s":40.9}},{"land":"Uruguay","iso2":"UY","k":"Südamerika","hs":"Montevideo","gs":"Montevideo","bev":3444006,"sys":"Präsidiale Republik","mr":{"s":96,"t":"Frei"},"pf":{"r":59,"p":65.18},"gi":{"st":["Montevideo"],"lei":"Irene Müller"},"bot":{"n":"Stefan Duppel","ti":"Botschafter:in","o":"Montevideo"},"hpi":{"r":33,"s":46.5},"epi":{"r":56,"s":48.1}},{"land":"Venezuela","iso2":"VE","k":"Südamerika","hs":"Caracas","gs":"Caracas","bev":28838499,"sys":"Föderale Präsidialrepublik (autoritär)","mr":{"s":16,"t":"Nicht frei"},"pf":{"r":160,"p":29.21},"gi":{"st":["Caracas"],"lei":"Dr. Thomas Schaumberg"},"bot":{"n":"Dr. Volker Pellet","ti":"Botschafter:in","o":"Caracas"},"hpi":{"r":54,"s":42.3},"epi":{"r":84,"s":38.9}},{"land":"Albanien","iso2":"AL","k":"Europa","hs":"Tirana","gs":"Tirana","bev":2745972,"sys":"Parlamentarische Republik","mr":{"s":66,"t":"Teilweise frei"},"pf":{"r":80,"p":58.18},"gi":{"st":["Tirana"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Karlfried Bergner","ti":"Botschafter:in","o":"Tirana"},"hpi":{"r":47,"s":44.2},"epi":{"r":39,"s":55.3}},{"land":"Österreich","iso2":"AT","k":"Europa","hs":"Wien","gs":"Wien","bev":9104772,"sys":"Föderale parlamentarische Republik","mr":{"s":93,"t":"Frei"},"pf":{"r":22,"p":78.12},"gi":{"st":["Wien"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Vito Cecere","ti":"Botschafter:in","o":"Wien"},"hpi":{"r":22,"s":48.8},"epi":{"r":8,"s":68.9}},{"land":"Belarus","iso2":"BY","k":"Europa","hs":"Minsk","gs":"Minsk","bev":9498238,"sys":"Präsidiale Republik (autoritär)","mr":{"s":7,"t":"Nicht frei"},"pf":{"r":167,"p":null},"gi":{"st":["Minsk"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Katrin aus dem Siepen","ti":"Botschafter:in","o":"Minsk"},"hpi":{"r":49,"s":43.5},"epi":{"r":32,"s":58.2}},{"land":"Belgien","iso2":"BE","k":"Europa","hs":"Brüssel","gs":"Brüssel","bev":11584008,"sys":"Föderale parlamentarische Konstitutionelle Monarchie","mr":{"s":96,"t":"Frei"},"pf":{"r":18,"p":80.12},"gi":{"st":["Brüssel"],"lei":"Dr. Julia Sattler"},"bot":{"n":"Martin Kotthaus","ti":"Botschafter:in","o":"Brüssel"},"hpi":{"r":19,"s":49.0},"epi":{"r":15,"s":66.8}},{"land":"Bosnien und Herzegowina","iso2":"BA","k":"Europa","hs":"Sarajevo","gs":"Sarajevo","bev":3210347,"sys":"Föderale parlamentarische Republik","mr":{"s":55,"t":"Teilweise frei"},"pf":{"r":86,"p":56.33},"gi":{"st":["Sarajevo"],"lei":"Sonja Griegoschewski (Reg. Europa I)"},"bot":{"n":"Alfred Grannas","ti":"Botschafter:in","o":"Sarajevo"},"hpi":{"r":45,"s":44.8},"epi":{"r":43,"s":53.6}},{"land":"Bulgarien","iso2":"BG","k":"Europa","hs":"Sofia","gs":"Sofia","bev":6520314,"sys":"Parlamentarische Republik","mr":{"s":76,"t":"Frei"},"pf":{"r":70,"p":60.78},"gi":{"st":["Sofia"],"lei":"Kirsten Hackenbroch"},"bot":{"n":"Irene Maria Plank","ti":"Botschafter:in","o":"Sofia"},"hpi":{"r":37,"s":46.8},"epi":{"r":41,"s":54.2}},{"land":"Kroatien","iso2":"HR","k":"Europa","hs":"Zagreb","gs":"Zagreb","bev":3871833,"sys":"Parlamentarische Republik","mr":{"s":76,"t":"Frei"},"pf":{"r":60,"p":64.2},"gi":{"st":["Zagreb"],"lei":"Sonja Griegoschewski (Reg. Europa I)"},"bot":{"n":"Pascal Hector","ti":"Botschafter:in","o":"Zagreb"},"hpi":{"r":32,"s":46.2},"epi":{"r":25,"s":62.3}},{"land":"Zypern","iso2":"CY","k":"Europa","hs":"Nikosia","gs":"Nikosia","bev":1244188,"sys":"Präsidiale Republik","mr":{"s":90,"t":"Frei"},"pf":{"r":77,"p":59.04},"gi":{"st":["Nikosia"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Hans-Peter Jugel","ti":"Botschafter:in","o":"Nikosia"},"hpi":{"r":46,"s":44.5},"epi":{"r":48,"s":51.9}},{"land":"Tschechien","iso2":"CZ","k":"Europa","hs":"Prag","gs":"Prag","bev":10900555,"sys":"Parlamentarische Republik","mr":{"s":93,"t":"Frei"},"pf":{"r":10,"p":83.96},"gi":{"st":["Prag","Pardubice"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Dr. Peter Reuss","ti":"Botschafter:in","o":"Prag"},"hpi":{"r":31,"s":47.1},"epi":{"r":17,"s":65.5}},{"land":"Dänemark","iso2":"DK","k":"Europa","hs":"Kopenhagen","gs":"Kopenhagen","bev":5910913,"sys":"Konstitutionelle Monarchie (parlamentarisch)","mr":{"s":99,"t":"Frei"},"pf":{"r":6,"p":86.93},"gi":{"st":["Kopenhagen"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Anke Meyer","ti":"Botschafter:in","o":"Kopenhagen"},"hpi":{"r":7,"s":53.0},"epi":{"r":10,"s":67.7}},{"land":"Estland","iso2":"EE","k":"Europa","hs":"Tallinn","gs":"Tallinn","bev":1357739,"sys":"Parlamentarische Republik","mr":{"s":96,"t":"Frei"},"pf":{"r":2,"p":89.46},"gi":{"st":["Tallinn","Tartu"],"lei":"Sonja Griegoschewski (Reg. Mittelosteuropa)"},"bot":{"n":"Jan Scheer","ti":"Botschafter:in","o":"Tallinn"},"hpi":{"r":38,"s":47.0},"epi":{"r":1,"s":75.7}},{"land":"Finnland","iso2":"FI","k":"Europa","hs":"Helsinki","gs":"Helsinki","bev":5545475,"sys":"Parlamentarische Republik","mr":{"s":100,"t":"Frei"},"pf":{"r":5,"p":87.18},"gi":{"st":["Helsinki"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Stephan Auer","ti":"Botschafter:in","o":"Helsinki"},"hpi":{"r":17,"s":49.8},"epi":{"r":4,"s":73.8}},{"land":"Frankreich","iso2":"FR","k":"Europa","hs":"Paris","gs":"Paris","bev":68170228,"sys":"Semipräsidentielle Republik","mr":{"s":88,"t":"Frei"},"pf":{"r":25,"p":76.62},"gi":{"st":["Bordeaux","Lille","Lyon","Nancy","Paris","Straßburg","Toulouse"],"lei":"Katharina Hey"},"bot":{"n":"Stephan Steinlein","ti":"Botschafter:in","o":"Paris"},"hpi":{"r":8,"s":52.0},"epi":{"r":12,"s":67.0}},{"land":"Georgien","iso2":"GE","k":"Europa","hs":"Tiflis","gs":"Tiflis","bev":3728573,"sys":"Semipräsidentielle Republik","mr":{"s":66,"t":"Teilweise frei"},"pf":{"r":114,"p":null},"gi":{"st":["Tiflis"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Ernst Peter Fischer","ti":"Botschafter:in","o":"Tiflis"},"hpi":{"r":52,"s":42.5},"epi":{"r":47,"s":52.1}},{"land":"Griechenland","iso2":"GR","k":"Europa","hs":"Athen","gs":"Athen","bev":10394055,"sys":"Parlamentarische Republik","mr":{"s":83,"t":"Frei"},"pf":{"r":89,"p":55.37},"gi":{"st":["Athen (Regionalsitz)","Chania","Patras","Thessaloniki"],"lei":"Sonja Griegoschewski (Reg. Europa I)"},"bot":{"n":"Andreas Kindl","ti":"Botschafter:in","o":"Athen"},"hpi":{"r":40,"s":46.0},"epi":{"r":11,"s":67.3}},{"land":"Ungarn","iso2":"HU","k":"Europa","hs":"Budapest","gs":"Budapest","bev":9689010,"sys":"Parlamentarische Republik","mr":{"s":60,"t":"Teilweise frei"},"pf":{"r":68,"p":62.82},"gi":{"st":["Budapest"],"lei":"Sonja Griegoschewski (Reg. Mittelosteuropa)"},"bot":{"n":"Julia Gross","ti":"Botschafter:in","o":"Budapest"},"hpi":{"r":34,"s":46.0},"epi":{"r":31,"s":59.8}},{"land":"Irland","iso2":"IE","k":"Europa","hs":"Dublin","gs":"Dublin","bev":5149139,"sys":"Parlamentarische Republik","mr":{"s":97,"t":"Frei"},"pf":{"r":7,"p":86.92},"gi":{"st":["Dublin"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"David Gill","ti":"Botschafter:in","o":"Dublin"},"hpi":{"r":29,"s":47.2},"epi":{"r":16,"s":65.8}},{"land":"Italien","iso2":"IT","k":"Europa","hs":"Rom","gs":"Rom","bev":58870762,"sys":"Parlamentarische Republik","mr":{"s":88,"t":"Frei"},"pf":{"r":49,"p":68.01},"gi":{"st":["Bologna","Genua","Mailand","Neapel","Palermo","Rom","Triest","Turin","Verona"],"lei":"Jessica Kraatz Magr"},"bot":{"n":"Thomas Bagger","ti":"Botschafter:in","o":"Rom"},"hpi":{"r":18,"s":49.5},"epi":{"r":29,"s":60.3}},{"land":"Kosovo","iso2":"XK","k":"Europa","hs":"Pristina","gs":"Pristina","bev":1842689,"sys":"Parlamentarische Republik (teilweise anerkannt)","mr":{"s":65,"t":"Teilweise frei"},"pf":{"r":99,"p":52.73},"gi":{"st":["Pristina"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Rainer Rudolph","ti":"Botschafter:in","o":"Pristina"},"hpi":{},"epi":{"r":49,"s":51.2}},{"land":"Lettland","iso2":"LV","k":"Europa","hs":"Riga","gs":"Riga","bev":1830211,"sys":"Parlamentarische Republik","mr":{"s":87,"t":"Frei"},"pf":{"r":15,"p":81.82},"gi":{"st":["Riga"],"lei":"Sonja Griegoschewski (Reg. Mittelosteuropa)"},"bot":{"n":"Gudrun Masloch","ti":"Botschafter:in","o":"Riga"},"hpi":{"r":40,"s":46.1},"epi":{"r":30,"s":60.2}},{"land":"Litauen","iso2":"LT","k":"Europa","hs":"Vilnius","gs":"Vilnius","bev":2862380,"sys":"Parlamentarische Republik","mr":{"s":90,"t":"Frei"},"pf":{"r":14,"p":82.27},"gi":{"st":["Vilnius"],"lei":"Sonja Griegoschewski (Reg. Mittelosteuropa)"},"bot":{"n":"Cornelius Zimmermann","ti":"Botschafter:in","o":"Vilnius"},"hpi":{"r":35,"s":46.5},"epi":{"r":21,"s":64.1}},{"land":"Luxemburg","iso2":"LU","k":"Europa","hs":"Luxemburg","gs":"Luxemburg","bev":668605,"sys":"Konstitutionelle Monarchie (parlamentarisch)","mr":{"s":97,"t":"Frei"},"pf":{"r":13,"p":83.04},"gi":{"st":["Luxemburg (Institut Pierre Werner)"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Heike Renate Peitsch","ti":"Botschafter:in","o":"Luxemburg"},"hpi":{"r":64,"s":39.5},"epi":{"r":2,"s":75.1}},{"land":"Niederlande","iso2":"NL","k":"Europa","hs":"Den Haag","gs":"Amsterdam","bev":17879847,"sys":"Konstitutionelle Monarchie (parlamentarisch)","mr":{"s":98,"t":"Frei"},"pf":{"r":3,"p":88.64},"gi":{"st":["Amsterdam","Rotterdam"],"lei":"Dr. Elke Kaschl Mohni (Reg. Europa II)"},"bot":{"n":"Nikolaus Meyer-Landrut","ti":"Botschafter:in","o":"Den Haag"},"hpi":{"r":14,"s":50.7},"epi":{"r":13,"s":66.9}},{"land":"Nordmazedonien","iso2":"MK","k":"Europa","hs":"Skopje","gs":"Skopje","bev":2085679,"sys":"Parlamentarische Republik","mr":{"s":63,"t":"Teilweise frei"},"pf":{"r":42,"p":70.44},"gi":{"st":["Skopje"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Petra Drexler","ti":"Botschafter:in","o":"Skopje"},"hpi":{"r":48,"s":43.8},"epi":{"r":46,"s":52.5}},{"land":"Norwegen","iso2":"NO","k":"Europa","hs":"Oslo","gs":"Oslo","bev":5474360,"sys":"Konstitutionelle Monarchie (parlamentarisch)","mr":{"s":100,"t":"Frei"},"pf":{"r":1,"p":92.31},"gi":{"st":["Oslo"],"lei":"Jutta Behnen"},"bot":{"n":"Christiane Hohmann","ti":"Botschafter:in","o":"Oslo"},"hpi":{"r":15,"s":50.5},"epi":{"r":7,"s":69.9}},{"land":"Polen","iso2":"PL","k":"Europa","hs":"Warschau","gs":"Warschau","bev":41026067,"sys":"Parlamentarische Republik","mr":{"s":82,"t":"Frei"},"pf":{"r":31,"p":74.79},"gi":{"st":["Krakau","Warschau"],"lei":"Sonja Griegoschewski (Reg. Mittelosteuropa)"},"bot":{"n":"Miguel Berger","ti":"Botschafter:in","o":"Warschau"},"hpi":{"r":36,"s":45.5},"epi":{"r":20,"s":64.2}},{"land":"Portugal","iso2":"PT","k":"Europa","hs":"Lissabon","gs":"Lissabon","bev":10247605,"sys":"Parlamentarische Republik","mr":{"s":96,"t":"Frei"},"pf":{"r":8,"p":84.26},"gi":{"st":["Lissabon","Porto"],"lei":"Dr. Jana Binder"},"bot":{"n":"Daniela Schlegel","ti":"Botschafter:in","o":"Lissabon"},"hpi":{"r":11,"s":51.0},"epi":{"r":26,"s":61.9}},{"land":"Rumänien","iso2":"RO","k":"Europa","hs":"Bukarest","gs":"Bukarest","bev":19051562,"sys":"Semipräsidentielle Republik","mr":{"s":71,"t":"Frei"},"pf":{"r":55,"p":66.42},"gi":{"st":["Bukarest"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Angela Ganninger","ti":"Botschafter:in","o":"Bukarest"},"hpi":{"r":46,"s":44.5},"epi":{"r":33,"s":57.3}},{"land":"Russland","iso2":"RU","k":"Europa","hs":"Moskau","gs":"Moskau","bev":143826130,"sys":"Föderale semi-präsidentielle Republik (autoritär)","mr":{"s":8,"t":"Nicht frei"},"pf":{"r":171,"p":24.57},"gi":{"st":["Moskau","St. Petersburg","Nowosibirsk"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Alexander Graf Lambsdorff","ti":"Botschafter:in","o":"Moskau"},"hpi":{"r":61,"s":40.1},"epi":{"r":52,"s":49.5}},{"land":"Serbien","iso2":"RS","k":"Europa","hs":"Belgrad","gs":"Belgrad","bev":6641256,"sys":"Parlamentarische Republik","mr":{"s":56,"t":"Teilweise frei"},"pf":{"r":96,"p":53.55},"gi":{"st":["Belgrad"],"lei":"Sonja Griegoschewski (Reg. Europa I)"},"bot":{"n":"Anke Konrad","ti":"Botschafter:in","o":"Belgrad"},"hpi":{"r":44,"s":45.1},"epi":{"r":45,"s":52.8}},{"land":"Slowakei","iso2":"SK","k":"Europa","hs":"Bratislava","gs":"Bratislava","bev":5795199,"sys":"Parlamentarische Republik","mr":{"s":76,"t":"Frei"},"pf":{"r":38,"p":71.93},"gi":{"st":["Bratislava"],"lei":"Sonja Griegoschewski (Reg. Mittelosteuropa)"},"bot":{"n":"Thomas Kurz","ti":"Botschafter:in","o":"Bratislava"},"hpi":{"r":33,"s":46.5},"epi":{"r":18,"s":65.1}},{"land":"Slowenien","iso2":"SI","k":"Europa","hs":"Ljubljana","gs":"Ljubljana","bev":2116792,"sys":"Parlamentarische Republik","mr":{"s":93,"t":"Frei"},"pf":{"r":33,"p":74.06},"gi":{"st":["Ljubljana"],"lei":"Sonja Griegoschewski (Reg. Mittelosteuropa)"},"bot":{"n":"Sylvia Groneick","ti":"Botschafter:in","o":"Ljubljana"},"hpi":{"r":29,"s":47.5},"epi":{"r":24,"s":62.4}},{"land":"Spanien","iso2":"ES","k":"Europa","hs":"Madrid","gs":"Madrid","bev":48373336,"sys":"Konstitutionelle Monarchie (parlamentarisch)","mr":{"s":90,"t":"Frei"},"pf":{"r":23,"p":77.35},"gi":{"st":["Barcelona","Madrid"],"lei":"Antonia Blau"},"bot":{"n":"Maria Margarete Gosse","ti":"Botschafter:in","o":"Madrid"},"hpi":{"r":6,"s":53.0},"epi":{"r":22,"s":64.0}},{"land":"Schweden","iso2":"SE","k":"Europa","hs":"Stockholm","gs":"Stockholm","bev":10551707,"sys":"Konstitutionelle Monarchie (parlamentarisch)","mr":{"s":99,"t":"Frei"},"pf":{"r":4,"p":88.13},"gi":{"st":["Stockholm"],"lei":"Judith Mirschberger"},"bot":{"n":"Ludger Siemes","ti":"Botschafter:in","o":"Stockholm"},"hpi":{"r":2,"s":55.9},"epi":{"r":6,"s":70.3}},{"land":"Ukraine","iso2":"UA","k":"Europa","hs":"Kiew","gs":"Kiew","bev":37000000,"sys":"Semipräsidentielle Republik","mr":{"s":60,"t":"Teilweise frei"},"pf":{"r":62,"p":63.93},"gi":{"st":["Kiew"],"lei":"Fabian Mühlthaler"},"bot":{"n":"Heiko Thoms","ti":"Botschafter:in","o":"Kiew"},"hpi":{"r":47,"s":44.0},"epi":{"r":36,"s":56.1}},{"land":"Vereinigtes Königreich","iso2":"GB","k":"Europa","hs":"London","gs":"London","bev":68350000,"sys":"Konstitutionelle Monarchie (parlamentarisch)","mr":{"s":93,"t":"Frei"},"pf":{"r":20,"p":78.89},"gi":{"st":["Glasgow","London","Manchester"],"lei":"Nicolas Ehlert"},"bot":{"n":"Susanne Baumann","ti":"Botschafter:in","o":"London"},"hpi":{"r":25,"s":47.9},"epi":{"r":5,"s":72.6}},{"land":"Afghanistan","iso2":"AF","k":"Asien","hs":"Kabul","gs":"Kabul","bev":42239854,"sys":"Islamisches Emirat (Taliban, seit Aug. 2021)","mr":{"s":6,"t":"Nicht frei"},"pf":{"r":175,"p":null},"gi":{"st":["Kabul (Betrieb stark eingeschränkt)"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Rolf Dieter Reinhard (G.a.i.)","ti":"Botschafter:in","o":"Kabul"},"hpi":{},"epi":{"r":178,"s":25.1}},{"land":"Aserbaidschan","iso2":"AZ","k":"Asien","hs":"Baku","gs":"Baku","bev":10404193,"sys":"Präsidiale Republik (autoritär)","mr":{"s":7,"t":"Nicht frei"},"pf":{"r":164,"p":null},"gi":{"st":["Baku"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Dr. Ralf Horlemann","ti":"Botschafter:in","o":"Baku"},"hpi":{"r":58,"s":40.8},"epi":{"r":55,"s":48.5}},{"land":"Bangladesch","iso2":"BD","k":"Asien","hs":"Dhaka","gs":"Dhaka","bev":172954319,"sys":"Parlamentarische Republik (Übergang seit Aug. 2024)","mr":{"s":41,"t":"Teilweise frei"},"pf":{"r":149,"p":null},"gi":{"st":["Dhaka"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Rüdiger Lotz","ti":"Botschafter:in","o":"Dhaka"},"hpi":{"r":46,"s":43.9},"epi":{"r":173,"s":29.8}},{"land":"Kambodscha","iso2":"KH","k":"Asien","hs":"Phnom Penh","gs":"Phnom Penh","bev":17218418,"sys":"Konstitutionelle Monarchie (Einparteiendominanz)","mr":{"s":24,"t":"Nicht frei"},"pf":{"r":160,"p":28.18},"gi":{"st":["Phnom Penh"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Stefan Messerer","ti":"Botschafter:in","o":"Phnom Penh"},"hpi":{"r":41,"s":43.8},"epi":{"r":95,"s":35.8}},{"land":"China","iso2":"CN","k":"Asien","hs":"Peking","gs":"Shanghai","bev":1409670000,"sys":"Kommunistischer Einparteienstaat","mr":{"s":9,"t":"Nicht frei"},"pf":{"r":178,"p":null},"gi":{"st":["Peking","Shanghai"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Patricia Flor","ti":"Botschafter:in","o":"Peking"},"hpi":{"r":48,"s":41.5},"epi":{"r":88,"s":37.8}},{"land":"Hongkong","iso2":"HK","k":"Asien","hs":"Hongkong (SVZ)","gs":"Kowloon","bev":7346700,"sys":"Sonderverwaltungszone der VR China","mr":{"s":29,"t":"Nicht frei"},"pf":{"r":140,"p":null},"gi":{"st":["Hongkong"],"lei":"Arendt Röskens"},"bot":{"n":"k.A.","ti":"Generalkonsul:in","o":"Hongkong"},"hpi":{},"epi":{"r":37,"s":55.9}},{"land":"Indien","iso2":"IN","k":"Asien","hs":"Neu-Delhi","gs":"Mumbai","bev":1428627663,"sys":"Föderale parlamentarische Republik","mr":{"s":66,"t":"Teilweise frei"},"pf":{"r":151,"p":32.96},"gi":{"st":["Ahmedabad","Bangalore","Chandigarh","Chennai","Hyderabad","Kolkata","Mumbai","Neu-Delhi (Regionalsitz)","Pune"],"lei":"Dr. Marla Stukenberg (Reg. Südasien)"},"bot":{"n":"Philipp Ackermann","ti":"Botschafter:in","o":"Neu-Delhi"},"hpi":{"r":69,"s":38.1},"epi":{"r":176,"s":27.6}},{"land":"Indonesien","iso2":"ID","k":"Asien","hs":"Jakarta","gs":"Jakarta","bev":277534122,"sys":"Präsidiale Republik","mr":{"s":59,"t":"Teilweise frei"},"pf":{"r":127,"p":44.12},"gi":{"st":["Bandung","Jakarta (Regionalsitz)","Surabaya"],"lei":"Constanze Michel (Reg. SO-Asien/AU/NZ)"},"bot":{"n":"Ralf Beste","ti":"Botschafter:in","o":"Jakarta"},"hpi":{"r":39,"s":44.1},"epi":{"r":98,"s":34.9}},{"land":"Iran","iso2":"IR","k":"Asien","hs":"Teheran","gs":"Teheran","bev":89172767,"sys":"Theokratische Republik","mr":{"s":17,"t":"Nicht frei"},"pf":{"r":176,"p":null},"gi":{"st":["Teheran (DSIT – kein reguläres GI)"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Axel Dittmann","ti":"Botschafter:in","o":"Teheran"},"hpi":{"r":80,"s":35.0},"epi":{"r":109,"s":31.5}},{"land":"Irak","iso2":"IQ","k":"Asien","hs":"Bagdad","gs":"Bagdad","bev":42716287,"sys":"Föderale parlamentarische Republik","mr":{"s":29,"t":"Nicht frei"},"pf":{"r":153,"p":null},"gi":{"st":["Erbil"],"lei":"Thomas Lier"},"bot":{"n":"Daniel Krebber","ti":"Botschafter:in","o":"Bagdad"},"hpi":{"r":96,"s":32.5},"epi":{"r":145,"s":22.8}},{"land":"Israel","iso2":"IL","k":"Asien","hs":"Jerusalem","gs":"Jerusalem","bev":9215105,"sys":"Parlamentarische Demokratie","mr":{"s":76,"t":"Frei"},"pf":{"r":112,"p":null},"gi":{"st":["Jerusalem","Tel Aviv"],"lei":"Reimar Volker"},"bot":{"n":"Steffen Seibert","ti":"Botschafter:in","o":"Tel Aviv"},"hpi":{"r":79,"s":35.2},"epi":{"r":38,"s":55.9}},{"land":"Japan","iso2":"JP","k":"Asien","hs":"Tokio","gs":"Tokio","bev":123294513,"sys":"Konstitutionelle Monarchie (parlamentarisch)","mr":{"s":96,"t":"Frei"},"pf":{"r":66,"p":63.14},"gi":{"st":["Kyoto","Osaka","Tokio (Regionalsitz)"],"lei":"Melanie Bono"},"bot":{"n":"Petra Sigmund","ti":"Botschafter:in","o":"Tokio"},"hpi":{"r":43,"s":43.3},"epi":{"r":27,"s":61.4}},{"land":"Jordanien","iso2":"JO","k":"Asien","hs":"Amman","gs":"Amman","bev":10680253,"sys":"Konstitutionelle Monarchie","mr":{"s":35,"t":"Teilweise frei"},"pf":{"r":147,"p":null},"gi":{"st":["Amman"],"lei":"Dr. Christian Diemer"},"bot":{"n":"Bertram von Moltke","ti":"Botschafter:in","o":"Amman"},"hpi":{"r":73,"s":37.1},"epi":{"r":91,"s":37.1}},{"land":"Kasachstan","iso2":"KZ","k":"Asien","hs":"Astana","gs":"Almaty","bev":19606633,"sys":"Präsidiale Republik (autoritär)","mr":{"s":23,"t":"Nicht frei"},"pf":{"r":141,"p":null},"gi":{"st":["Almaty"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Monika Iwersen","ti":"Botschafter:in","o":"Astana"},"hpi":{"r":60,"s":40.2},"epi":{"r":63,"s":45.8}},{"land":"Libanon","iso2":"LB","k":"Asien","hs":"Beirut","gs":"Beirut","bev":5489739,"sys":"Parlamentarische Republik (konfessionelles System)","mr":{"s":43,"t":"Teilweise frei"},"pf":{"r":111,"p":null},"gi":{"st":["Beirut"],"lei":"Anne Eberhard"},"bot":{"n":"Kurt Georg Stoeckl-Stillfried","ti":"Botschafter:in","o":"Beirut"},"hpi":{"r":88,"s":34.1},"epi":{"r":98,"s":34.9}},{"land":"Malaysia","iso2":"MY","k":"Asien","hs":"Kuala Lumpur","gs":"Kuala Lumpur","bev":33573874,"sys":"Föderale konstitutionelle Wahlmonarchie","mr":{"s":49,"t":"Teilweise frei"},"pf":{"r":88,"p":56.09},"gi":{"st":["Kuala Lumpur"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Silke Riecken-Daerr","ti":"Botschafter:in","o":"Kuala Lumpur"},"hpi":{"r":42,"s":43.5},"epi":{"r":83,"s":39.1}},{"land":"Mongolei","iso2":"MN","k":"Asien","hs":"Ulaanbaatar","gs":"Ulaanbaatar","bev":3447157,"sys":"Semipräsidentielle Republik","mr":{"s":84,"t":"Frei"},"pf":{"r":108,"p":null},"gi":{"st":["Ulaanbaatar"],"lei":"Leonhard Heydecker"},"bot":{"n":"Helmut Kulitz","ti":"Botschafter:in","o":"Ulaanbaatar"},"hpi":{"r":62,"s":39.8},"epi":{"r":77,"s":40.7}},{"land":"Myanmar","iso2":"MM","k":"Asien","hs":"Naypyidaw","gs":"Yangon","bev":54409794,"sys":"Militärjunta (seit Putsch Feb. 2021)","mr":{"s":7,"t":"Nicht frei"},"pf":{"r":169,"p":25.32},"gi":{"st":["Yangon"],"lei":"Mona Kriegler"},"bot":{"n":"Mathias Licharz (G.a.i.)","ti":"Botschafter:in","o":"Rangun"},"hpi":{"r":50,"s":43.2},"epi":{"r":108,"s":32.1}},{"land":"Nepal","iso2":"NP","k":"Asien","hs":"Kathmandu","gs":"Kathmandu","bev":30034989,"sys":"Föderale demokratische Republik","mr":{"s":60,"t":"Teilweise frei"},"pf":{"r":90,"p":55.2},"gi":{"st":["Kathmandu"],"lei":"Dr. Marla Stukenberg (Reg. Südasien)"},"bot":{"n":"Udo Volz","ti":"Botschafter:in","o":"Kathmandu"},"hpi":{"r":63,"s":39.5},"epi":{"r":120,"s":30.5}},{"land":"Oman","iso2":"OM","k":"Asien","hs":"Maskat","gs":"Maskat","bev":4644384,"sys":"Absolute Monarchie","mr":{"s":22,"t":"Nicht frei"},"pf":{"r":153,"p":null},"gi":{"st":["Maskat (Zweigstelle GI Abu Dhabi)"],"lei":"Claudia Römmelt (Reg. Golf-Region)"},"bot":{"n":"Dirk Lölke","ti":"Botschafter:in","o":"Maskat"},"hpi":{"r":82,"s":34.5},"epi":{"r":73,"s":41.8}},{"land":"Pakistan","iso2":"PK","k":"Asien","hs":"Islamabad","gs":"Karachi","bev":231402117,"sys":"Föderale parlamentarische Republik","mr":{"s":37,"t":"Teilweise frei"},"pf":{"r":152,"p":null},"gi":{"st":["Karachi","Lahore"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Ina Lepel","ti":"Botschafter:in","o":"Islamabad"},"hpi":{"r":74,"s":37.2},"epi":{"r":177,"s":25.3}},{"land":"Palästina","iso2":"PS","k":"Asien","hs":"Ramallah (de facto)","gs":"Gaza / Ramallah","bev":5179368,"sys":"Palästinensische Autonomiebehörde (teilautonom)","mr":{"s":30,"t":"Teilweise frei"},"pf":{"r":157,"p":null},"gi":{"st":["Ramallah"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Anke Schlimm","ti":"Generalkonsul:in","o":"Ramallah"},"hpi":{},"epi":{}},{"land":"Philippinen","iso2":"PH","k":"Asien","hs":"Manila","gs":"Manila","bev":117337368,"sys":"Präsidiale Republik","mr":{"s":56,"t":"Teilweise frei"},"pf":{"r":116,"p":49.57},"gi":{"st":["Manila"],"lei":"Julian Fuchs"},"bot":{"n":"Andreas Pfaffernoschke","ti":"Botschafter:in","o":"Manila"},"hpi":{"r":35,"s":45.6},"epi":{"r":96,"s":35.4}},{"land":"Singapur","iso2":"SG","k":"Asien","hs":"Singapur","gs":"Singapur","bev":5917648,"sys":"Parlamentarische Republik (Dominanzpartei PAP)","mr":{"s":29,"t":"Teilweise frei"},"pf":{"r":122,"p":45.78},"gi":{"st":["Singapur"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Bettina Fanghänel","ti":"Botschafter:in","o":"Singapur"},"hpi":{"r":55,"s":38.0},"epi":{"r":38,"s":55.8}},{"land":"Südkorea","iso2":"KR","k":"Asien","hs":"Seoul","gs":"Seoul","bev":51712619,"sys":"Präsidiale Republik","mr":{"s":83,"t":"Frei"},"pf":{"r":61,"p":64.06},"gi":{"st":["Seoul (Regionalsitz)","Busan","Daejeon","Daegu","Gwangju"],"lei":"Dr. Clemens Treter (Reg. Ost- und Zentralasien)"},"bot":{"n":"Georg Schmidt","ti":"Botschafter:in","o":"Seoul"},"hpi":{"r":57,"s":35.0},"epi":{"r":42,"s":53.9}},{"land":"Sri Lanka","iso2":"LK","k":"Asien","hs":"Sri Jayawardenepura Kotte","gs":"Colombo","bev":21893579,"sys":"Semipräsidentielle Republik","mr":{"s":56,"t":"Teilweise frei"},"pf":{"r":133,"p":null},"gi":{"st":["Colombo"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Felix Neumann","ti":"Botschafter:in","o":"Colombo"},"hpi":{"r":50,"s":43.2},"epi":{"r":110,"s":31.8}},{"land":"Syrien","iso2":"SY","k":"Asien","hs":"Damaskus","gs":"Aleppo","bev":22124000,"sys":"Übergangsstaat (post-Assad seit Dez. 2024)","mr":{"s":5,"t":"Nicht frei"},"pf":{"r":177,"p":null},"gi":{"st":["Damaskus (Übergangsstatus)"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Clemens Hach (Geschäftsträger)","ti":"Botschafter:in","o":"Damaskus"},"hpi":{},"epi":{"r":175,"s":24.2}},{"land":"Taiwan","iso2":"TW","k":"Asien","hs":"Taipeh","gs":"Neu-Taipeh","bev":23588613,"sys":"Präsidiale Republik","mr":{"s":94,"t":"Frei"},"pf":{"r":24,"p":77.04},"gi":{"st":["Taipeh"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Karsten Tietz","ti":"Repräsentant:in","o":"Taipeh"},"hpi":{},"epi":{"r":51,"s":49.8}},{"land":"Thailand","iso2":"TH","k":"Asien","hs":"Bangkok","gs":"Bangkok","bev":71801279,"sys":"Konstitutionelle Monarchie (militärisch beeinflusst)","mr":{"s":30,"t":"Nicht frei"},"pf":{"r":85,"p":56.72},"gi":{"st":["Bangkok (Regionalsitz Südostasien-Festland)"],"lei":"Johannes Hossfeld"},"bot":{"n":"Ernst Reichel","ti":"Botschafter:in","o":"Bangkok"},"hpi":{"r":32,"s":47.2},"epi":{"r":87,"s":38.1}},{"land":"Türkei","iso2":"TR","k":"Asien","hs":"Ankara","gs":"Istanbul","bev":85325965,"sys":"Präsidiale Republik","mr":{"s":34,"t":"Nicht frei"},"pf":{"r":159,"p":null},"gi":{"st":["Ankara","Istanbul (Regionalsitz Türkei)","İzmir"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Sibylle Katharina Sorg","ti":"Botschafter:in","o":"Ankara"},"hpi":{"r":44,"s":45.3},"epi":{"r":44,"s":53.0}},{"land":"Vereinigte Arabische Emirate","iso2":"AE","k":"Asien","hs":"Abu Dhabi","gs":"Dubai","bev":9516700,"sys":"Föderale absolute Monarchie","mr":{"s":17,"t":"Nicht frei"},"pf":{"r":162,"p":null},"gi":{"st":["Abu Dhabi (Regionalsitz Golfstaaten)","Dubai (Zweigstelle)"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Alexander Schönfelder","ti":"Botschafter:in","o":"Abu Dhabi"},"hpi":{"r":91,"s":33.0},"epi":{"r":64,"s":45.1}},{"land":"Usbekistan","iso2":"UZ","k":"Asien","hs":"Taschkent","gs":"Taschkent","bev":35300370,"sys":"Präsidiale Republik (autoritär)","mr":{"s":9,"t":"Nicht frei"},"pf":{"r":155,"p":null},"gi":{"st":["Taschkent"],"lei":"Barbara Anna Bernsmeier"},"bot":{"n":"Manfred Huterer","ti":"Botschafter:in","o":"Taschkent"},"hpi":{"r":55,"s":41.5},"epi":{"r":78,"s":40.5}},{"land":"Vietnam","iso2":"VN","k":"Asien","hs":"Hanoi","gs":"Ho-Chi-Minh-Stadt","bev":98186463,"sys":"Kommunistischer Einparteienstaat","mr":{"s":19,"t":"Nicht frei"},"pf":{"r":173,"p":19.74},"gi":{"st":["Hanoi (Regionalsitz)","Ho-Chi-Minh-Stadt"],"lei":"Oliver Brandt"},"bot":{"n":"Helga Barth","ti":"Botschafter:in","o":"Hanoi"},"hpi":{"r":38,"s":49.8},"epi":{"r":90,"s":37.2}},{"land":"Australien","iso2":"AU","k":"Ozeanien","hs":"Canberra","gs":"Sydney","bev":26439111,"sys":"Föderale parlamentarische Konstitutionelle Monarchie","mr":{"s":97,"t":"Frei"},"pf":{"r":29,"p":75.15},"gi":{"st":["Melbourne","Sydney"],"lei":"Christoph Mücher"},"bot":{"n":"Beate Grzeski","ti":"Botschafter:in","o":"Canberra"},"hpi":{"r":31,"s":46.9},"epi":{"r":23,"s":63.1}},{"land":"Neuseeland","iso2":"NZ","k":"Ozeanien","hs":"Wellington","gs":"Auckland","bev":5123598,"sys":"Parlamentarische Konstitutionelle Monarchie","mr":{"s":99,"t":"Frei"},"pf":{"r":16,"p":81.37},"gi":{"st":["Wellington"],"lei":"Constanze Michel (Reg. SO-Asien/AU/NZ)"},"bot":{"n":"Nicole Menzenbach","ti":"Botschafter:in","o":"Wellington"},"hpi":{"r":31,"s":48.2},"epi":{"r":34,"s":57.3}},{"land":"Guatemala","iso2":"GT","k":"Mittelamerika","hs":"Guatemala-Stadt","gs":"Guatemala-Stadt","bev":17843908,"sys":"Präsidiale Republik","mr":{"s":35,"t":"Teilweise frei"},"pf":{"r":129,"p":null},"gi":{"st":["Guatemala-Stadt"],"lei":"Veronika Haas"},"bot":{"n":"Dr. Hardy Boeckle","ti":"","o":"Guatemala-Stadt"},"hpi":{"r":16,"s":50.4},"epi":{"r":65,"s":44.8}},{"land":"El Salvador","iso2":"SV","k":"Mittelamerika","hs":"San Salvador","gs":"San Salvador","bev":6364943,"sys":"Präsidiale Republik","mr":{"s":38,"t":"Teilweise frei"},"pf":{"r":82,"p":null},"gi":{"st":["San Salvador"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Friedo Sielemann","ti":"","o":"San Salvador"},"hpi":{"r":3,"s":54.7},"epi":{"r":68,"s":43.5}},{"land":"Honduras","iso2":"HN","k":"Mittelamerika","hs":"Tegucigalpa","gs":"Tegucigalpa","bev":10593798,"sys":"Präsidiale Republik","mr":{"s":26,"t":"Nicht frei"},"pf":{"r":147,"p":null},"gi":{"st":["Tegucigalpa"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Daniela Vogl","ti":"","o":"Tegucigalpa"},"hpi":{"r":13,"s":50.8},"epi":{"r":72,"s":42.1}},{"land":"Nicaragua","iso2":"NI","k":"Mittelamerika","hs":"Managua","gs":"Managua","bev":7046311,"sys":"Präsidiale Republik (autoritär)","mr":{"s":14,"t":"Nicht frei"},"pf":{"r":163,"p":null},"gi":{"st":["Managua (Betrieb eingeschränkt)"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Karsten Warnecke","ti":"","o":"Managua"},"hpi":{"r":5,"s":53.6},"epi":{"r":75,"s":41.2}},{"land":"Panama","iso2":"PA","k":"Mittelamerika","hs":"Panama-Stadt","gs":"Panama-Stadt","bev":4468087,"sys":"Präsidiale Republik","mr":{"s":71,"t":"Frei"},"pf":{"r":47,"p":null},"gi":{"st":["Panama-Stadt"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Joachim Christoph Schmillen","ti":"","o":"Panama-Stadt"},"hpi":{"r":9,"s":52.0},"epi":{"r":53,"s":49.3}},{"land":"Dominikanische Republik","iso2":"DO","k":"Mittelamerika","hs":"Santo Domingo","gs":"Santo Domingo","bev":11332972,"sys":"Präsidiale Republik","mr":{"s":61,"t":"Teilweise frei"},"pf":{"r":79,"p":null},"gi":{"st":["Santo Domingo"],"lei":"nicht öffentlich eindeutig auffindbar"},"bot":{"n":"Maike Friedrichsen","ti":"","o":"Santo Domingo"},"hpi":{"r":28,"s":47.3},"epi":{"r":60,"s":46.8}}]
+;
+
+const N2I = {276:"DE",12:"DZ",24:"AO",854:"BF",384:"CI",818:"EG",231:"ET",288:"GH",
+120:"CM",404:"KE",434:"LY",450:"MG",504:"MA",508:"MZ",516:"NA",566:"NG",646:"RW",
+686:"SN",710:"ZA",729:"SD",834:"TZ",768:"TG",788:"TN",800:"UG",716:"ZW",124:"CA",
+484:"MX",840:"US",188:"CR",192:"CU",32:"AR",68:"BO",76:"BR",152:"CL",170:"CO",
+218:"EC",600:"PY",604:"PE",858:"UY",862:"VE",8:"AL",40:"AT",112:"BY",56:"BE",70:"BA",
+100:"BG",191:"HR",196:"CY",203:"CZ",208:"DK",233:"EE",246:"FI",250:"FR",268:"GE",
+300:"GR",348:"HU",372:"IE",380:"IT",383:"XK",428:"LV",440:"LT",442:"LU",528:"NL",
+807:"MK",578:"NO",616:"PL",620:"PT",642:"RO",643:"RU",688:"RS",703:"SK",705:"SI",
+724:"ES",752:"SE",804:"UA",826:"GB",4:"AF",31:"AZ",50:"BD",116:"KH",156:"CN",
+344:"HK",356:"IN",360:"ID",364:"IR",368:"IQ",376:"IL",392:"JP",400:"JO",398:"KZ",
+422:"LB",458:"MY",496:"MN",104:"MM",524:"NP",512:"OM",586:"PK",275:"PS",608:"PH",
+702:"SG",410:"KR",144:"LK",760:"SY",158:"TW",764:"TH",792:"TR",784:"AE",860:"UZ",
+704:"VN",36:"AU",554:"NZ",320:"GT",222:"SV",340:"HN",558:"NI",591:"PA",214:"DO"};
+
+const KFIG = {
+  "Europa":    {e:"🌍",c:"#6366F1",mapBg:"#F0EBD8",center:[15,55],  scale:560},
+  "Afrika":    {e:"🌍",c:"#D97706",mapBg:"#F0EBD8",center:[20,3],   scale:280},
+  "Nord- und Zentralamerika":   {e:"🌎",c:"#059669",mapBg:"#F0EBD8",center:[-90,25], scale:320},
+  "Südamerika":{e:"🌎",c:"#DC2626",mapBg:"#F0EBD8",center:[-60,-15],scale:360},
+  "Asien":     {e:"🌏",c:"#7C3AED",mapBg:"#F0EBD8",center:[90,38],  scale:250},
+  "Ozeanien":  {e:"🌏",c:"#0891B2",mapBg:"#F0EBD8",center:[150,-25],scale:430},
+};
+
+// Nord- und Mittelamerika werden unter "Nord- und Zentralamerika" zusammengefasst
+const KONTINENT_GRUPPEN = {
+  "Nord- und Zentralamerika": ["Nordamerika","Mittelamerika"],
+};
+
+function getKontinentLaender(anzeigeName) {
+  const rohNamen = KONTINENT_GRUPPEN[anzeigeName] || [anzeigeName];
+  return LAENDER.filter(l => rohNamen.includes(l.k));
+}
+
+const GEO = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+
+// Regionale Fallbacks für kleine Kontinente
+const REGION_FALLBACK = {
+  "Nord- und Zentralamerika": ["Südamerika"],
+  "Ozeanien": ["Asien","Südamerika"],
+};
+
+function getRegionalPool(anzeigeName, mindest) {
+  const haupt = getKontinentLaender(anzeigeName);
+  if (haupt.length >= mindest) return haupt;
+  let pool = [...haupt];
+  for (const fb of (REGION_FALLBACK[anzeigeName] || [])) {
+    if (pool.length >= mindest) break;
+    pool = [...pool, ...getKontinentLaender(fb).filter(l => !pool.find(x => x.iso2 === l.iso2))];
+  }
+  if (pool.length < mindest) {
+    pool = [...pool, ...LAENDER.filter(l => !pool.find(x => x.iso2 === l.iso2))];
+  }
+  return pool;
+}
+function getMC(r,pool,f){
+  const w=sh(pool.filter(p=>p[f]!==r[f])).slice(0,3).map(p=>p[f]);
+  return sh([r[f],...w]);
+}
+function fmtN(n){
+  if(n>=1e9)return (n/1e9).toFixed(1)+" Mrd.";
+  if(n>=1e6)return (n/1e6).toFixed(1)+" Mio.";
+  return n.toLocaleString("de-DE");
+}
+function mrFarbe(t){return t==="Frei"?"#15803D":t==="Teilweise frei"?"#D97706":"#DC2626";}
+function mrBg(t){return t==="Frei"?"#DCFCE7":t==="Teilweise frei"?"#FEF3C7":"#FEE2E2";}
+
+// ─── FLAGGE ──────────────────────────────────────────────────────────────────
+function Flag({iso2,size}){
+  const s=size||24;
+  return <img src={"https://flagcdn.com/w40/"+iso2.toLowerCase()+".png"}
+    alt={iso2} style={{width:s,height:"auto",borderRadius:2,
+    boxShadow:"0 1px 3px rgba(0,0,0,0.2)",flexShrink:0}} />;
+}
+
+// ─── KARTE ───────────────────────────────────────────────────────────────────
+function Karte({kontinent,laender,fp,onKlick,aktivIso}){
+  const ref=useRef(null);
+  const [geoData,setGeoData]=useState(null);  // einmal laden, nicht bei jedem Klick
+  const [laden,setLaden]=useState(true);
+  const [fehler,setFehler]=useState(false);
+  const cfg=KFIG[kontinent];
+  const isoSet=useMemo(()=>new Set(laender.map(l=>l.iso2)),[laender]);
+
+  // Effekt 1: GeoJSON NUR EINMAL laden (kein Re-fetch bei Klicks)
+  useEffect(()=>{
+    setLaden(true); setFehler(false);
+    fetch(GEO)
+      .then(r=>{if(!r.ok)throw 0;return r.json();})
+      .then(topo=>{
+        setGeoData(topojson.feature(topo,topo.objects.countries));
+        setLaden(false);
+      })
+      .catch(()=>{setFehler(true);setLaden(false);});
+  },[]);  // Leeres Array: nur einmal beim Mounten
+
+  // Effekt 2: Karte NEU ZEICHNEN wenn Daten ändern (kein Fetch, kein schwarzer Bildschirm)
+  useEffect(()=>{
+    if(!geoData||!ref.current)return;
+    const el=ref.current;
+    const W=el.clientWidth||800, H=el.clientHeight||380;
+    const svg=d3.select(el);
+    svg.selectAll("*").remove();
+
+    const defs=svg.append("defs");
+    const glow=defs.append("filter").attr("id","glow").attr("x","-30%").attr("y","-30%").attr("width","160%").attr("height","160%");
+    glow.append("feGaussianBlur").attr("stdDeviation","3").attr("result","blur");
+    const feMerge=glow.append("feMerge");
+    feMerge.append("feMergeNode").attr("in","blur");
+    feMerge.append("feMergeNode").attr("in","SourceGraphic");
+
+    const proj=d3.geoMercator().center(cfg.center).scale(cfg.scale).translate([W/2,H/2]);
+
+    const kontinentFeatures=geoData.features.filter(ft=>isoSet.has(N2I[+ft.id]));
+    const ZOOM_AUSSCHLUSS={"Europa":new Set(["RU"])};
+    const ausschluss=ZOOM_AUSSCHLUSS[kontinent]||new Set();
+    const fitFeatures=kontinentFeatures.filter(ft=>!ausschluss.has(N2I[+ft.id]));
+
+    if(kontinent==="Europa"){
+      // Zoom direkt berechnen: Europa von ~22°W bis 45°E, 38°N bis 72°N
+      const lonRange = 67 * Math.PI / 180;
+      const euroScale = Math.round((W - 60) / lonRange);
+      proj.scale(euroScale).center([11, 57]).translate([W/2, H/2]);
+    } else if(kontinent==="Nord- und Zentralamerika"){
+      // Kanada-Nord abschneiden, Zentralamerika sichtbar: 120°W–60°W, 8°N–52°N
+      const lonRange = 92 * Math.PI / 180;
+      const amScale = Math.round((W - 60) / lonRange);
+      proj.scale(amScale).center([-95, 38]).translate([W/2, H/2]);
+    } else if(fitFeatures.length>0){
+      try{ proj.fitExtent([[24,24],[W-24,H-24]],{type:"FeatureCollection",features:fitFeatures}); }
+      catch(_){}
+    }
+
+    const path=d3.geoPath().projection(proj);
+    const gs=iso=>fp[iso]||"locked";
+
+    const getFill=(iso)=>{
+      if(!iso||!isoSet.has(iso))return "#D8DECA";
+      const s=gs(iso);
+      return s==="unlocked"?"#22C55E":"#B8CDB5";
+    };
+
+    svg.append("rect").attr("width",W).attr("height",H).attr("fill",cfg.mapBg);
+    const g=svg.append("g");
+
+    g.selectAll("path")
+      .data(geoData.features)
+      .join("path")
+      .attr("d",path)
+      .attr("fill",ft=>getFill(N2I[+ft.id]))
+      .attr("stroke",ft=>isoSet.has(N2I[+ft.id])?"#fff":"#94A3B8")
+      .attr("stroke-width",ft=>isoSet.has(N2I[+ft.id])?0.8:0.3)
+      .style("cursor",ft=>isoSet.has(N2I[+ft.id])?"pointer":"default")
+      .on("mouseover",function(ev,ft){
+        const iso=N2I[+ft.id];
+        if(!isoSet.has(iso))return;
+        const s=gs(iso);
+        d3.select(this).attr("fill",s==="unlocked"?"#15803D":"#8AAF86");
+      })
+      .on("mouseout",function(ev,ft){
+        const iso=N2I[+ft.id];
+        d3.select(this).attr("fill",getFill(iso));
+      })
+      .on("click",function(ev,ft){
+        const iso=N2I[+ft.id];
+        if(!isoSet.has(iso))return;
+        const land=laender.find(l=>l.iso2===iso);
+        if(land)onKlick(land);
+      });
+
+    laender.forEach(land=>{
+      if(gs(land.iso2)!=="unlocked")return;
+      const ft=geoData.features.find(f=>N2I[+f.id]===land.iso2);
+      if(!ft)return;
+      try{
+        const[cx,cy]=path.centroid(ft);
+        if(!isNaN(cx)&&!isNaN(cy)){
+          g.append("text").attr("x",cx).attr("y",cy)
+            .text(land.land.length>10?land.land.split(" ")[0]:land.land)
+            .attr("font-size","7px").attr("fill","#fff")
+            .attr("text-anchor","middle").attr("dominant-baseline","middle")
+            .attr("pointer-events","none")
+            .style("text-shadow","0 0 3px #000,0 0 3px #000");
+        }
+      }catch(_){}
+    });
+  },[geoData,fp,laender,kontinent]);  // aktivIso NICHT hier – verhindert Neuzeichnen beim Klick
+
+  return(
+    <div style={{position:"relative",width:"100%",height:"100%",background:cfg.mapBg,borderRadius:8,overflow:"hidden"}}>
+      <svg ref={ref} style={{width:"100%",height:"100%",display:"block"}}/>
+      {laden&&<div style={{position:"absolute",top:0,left:0,right:0,bottom:0,display:"flex",alignItems:"center",justifyContent:"center",gap:8,color:"#64748B",fontSize:13}}>
+        <div style={{width:18,height:18,border:"2px solid #CBD5E1",borderTopColor:cfg.c,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+        Karte wird geladen...
+      </div>}
+      {fehler&&<div style={{position:"absolute",top:0,left:0,right:0,bottom:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6,color:"#94A3B8",padding:20,textAlign:"center"}}>
+        <span style={{fontSize:28}}>🗺️</span>
+        <span style={{fontSize:13}}>Karte konnte nicht geladen werden</span>
+      </div>}
+{/* Legende */}
+      <div style={{position:"absolute",bottom:8,right:8,display:"flex",gap:8,fontSize:10,
+        background:"rgba(255,255,255,0.9)",padding:"4px 8px",borderRadius:6,
+        border:"1px solid #E2E8F0"}}>
+        {[{c:"#B8CDB5",l:"offen"},{c:"#22C55E",l:"gelöst"},{c:"#fff",l:"ausgewählt",border:true}].map(({c,l,border})=>(
+          <span key={l} style={{display:"flex",alignItems:"center",gap:4,color:"#475569"}}>
+            <span style={{width:8,height:8,borderRadius:2,background:c,display:"inline-block",border:border?"1.5px solid #94A3B8":"none"}}/>
+            {l}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── QUIZ PANEL (inline, kein Modal/fixed – funktioniert auf iOS) ───────────────
+function QuizPanel({land, laender, fp, setFP, onFertig, onAbbruch, onVersuch}){
+  // Pool: erst Sub-Region, dann Kontinent, dann alles – je nachdem was ≥8 Einträge hat
+  const pool = (() => {
+    const sr = land.sr || land.k;
+    const subR = LAENDER.filter(l=>l.sr===sr);
+    if(subR.length>=6) return subR;
+    // Verwandte Regionen zusammenfassen
+    const related = {
+      "Amerika-Nord":["Amerika-Mitte"],"Amerika-Mitte":["Amerika-Nord","Amerika-Sued"],
+      "Amerika-Sued":["Amerika-Mitte"],"Europa-Sued":["Europa-NordWest","Europa-Balkan"],
+      "Europa-Balkan":["Europa-Sued","Europa-OstMitte"],"Afrika-Sued":["Afrika-Ost","Afrika-West"],
+      "MENA-Golf":["MENA-Levante","Afrika-Nord"],"Ozeanien":["Asien-SO"],
+      "Asien-Zentral":["Asien-Ost","Asien-Sued"],
+    };
+    const extras = (related[sr]||[]).flatMap(r=>LAENDER.filter(l=>l.sr===r));
+    const combined = [...new Map([...subR,...extras].map(l=>[l.iso2,l])).values()];
+    if(combined.length>=6) return combined;
+    // Fallback: ganzer Kontinent
+    const cont = LAENDER.filter(l=>l.k===land.k);
+    return cont.length>=4 ? cont : LAENDER;
+  })();
+  const [optsLand] = useState(()=>{
+    const w=pool.filter(l=>l.land!==land.land).sort(()=>Math.random()-.5).slice(0,3).map(l=>l.land);
+    return [land.land,...w].sort(()=>Math.random()-.5);
+  });
+  const [optsHs] = useState(()=>{
+    const w=pool.filter(l=>l.hs!==land.hs).sort(()=>Math.random()-.5).slice(0,3).map(l=>l.hs);
+    return [land.hs,...w].sort(()=>Math.random()-.5);
+  });
+  const [schritt, setSchritt] = useState(fp[land.iso2]==="step2"?2:1);
+  const [gewaehlt, setGewaehlt] = useState(null);
+  const [feedback, setFeedback] = useState(null);
+
+  const opts    = schritt===1 ? optsLand : optsHs;
+  const richtig = schritt===1 ? land.land : land.hs;
+
+  function waehle(opt){
+    if(gewaehlt) return;
+    setGewaehlt(opt);
+    const korrekt = opt===richtig;
+    if(onVersuch) onVersuch(korrekt, land.iso2, schritt);
+    if(korrekt){
+      setFeedback("richtig");
+      if(schritt===1){
+        setFP(land.iso2,"step2");
+        setTimeout(()=>{setSchritt(2);setGewaehlt(null);setFeedback(null);},900);
+      } else {
+        setFP(land.iso2,"unlocked");
+        setTimeout(()=>onFertig(land),900);
+      }
+    } else {
+      setFeedback("falsch");
+      setTimeout(onAbbruch,1600);
+    }
+  }
+
+  return(
+    <div style={{padding:"28px 24px"}}>
+
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <span style={{fontSize:11,fontWeight:700,color:"#94A3B8",letterSpacing:"0.1em",textTransform:"uppercase"}}>
+          Frage {schritt} von 2
+        </span>
+        <button onClick={onAbbruch}
+          style={{background:"none",border:"none",color:"#94A3B8",fontSize:13,cursor:"pointer",
+            display:"flex",alignItems:"center",gap:4}}>
+          schließen ✕
+        </button>
+      </div>
+
+      {/* Frage */}
+      <h2 style={{fontSize:24,fontWeight:900,color:"#0F172A",margin:"0 0 24px",lineHeight:1.2}}>
+        {schritt===1 ? "Welches Land ist das?" : "Was ist die Hauptstadt von "+land.land+"?"}
+      </h2>
+
+      {/* 2×2 Antwort-Grid */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
+        {opts.map(opt=>{
+          let bg="#F8FAFC", bc="#E2E8F0", tc="#1E293B";
+          if(gewaehlt){
+            if(opt===gewaehlt){
+              if(opt===richtig){bg="#DCFCE7";bc="#22C55E";tc="#15803D";}
+              else{bg="#FEE2E2";bc="#EF4444";tc="#B91C1C";}
+            }
+          }
+          return(
+            <button key={opt} onClick={()=>waehle(opt)}
+              style={{padding:"14px 12px",borderRadius:10,fontSize:14,fontWeight:500,
+                textAlign:"left",background:bg,border:"1.5px solid "+bc,color:tc,
+                cursor:gewaehlt?"default":"pointer",transition:"all 0.15s",lineHeight:1.3}}
+              onMouseEnter={e=>{if(!gewaehlt){e.currentTarget.style.background="#F1F5F9";e.currentTarget.style.borderColor="#CBD5E1";}}}
+              onMouseLeave={e=>{if(!gewaehlt){e.currentTarget.style.background=bg;e.currentTarget.style.borderColor=bc;}}}>
+              {opt}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Feedback */}
+      {feedback&&(
+        <div style={{textAlign:"center",padding:"10px 0"}}>
+          {feedback==="richtig" ? (
+            <span style={{color:"#15803D",fontWeight:600,fontSize:14}}>
+              {schritt===1?"✓ Richtig! Jetzt die Hauptstadt…":"🏆 Perfekt! Profil freigeschaltet!"}
+            </span>
+          ):(
+            <div>
+              <div style={{color:"#DC2626",fontWeight:600,fontSize:14,marginBottom:12}}>Leider falsch! 😔</div>
+              <button onClick={onAbbruch}
+                style={{background:"#F1F5F9",border:"none",borderRadius:8,
+                  padding:"8px 16px",fontSize:13,fontWeight:600,color:"#475569",cursor:"pointer"}}>
+                🗺️ Zurück zur Karte
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+function ProfilInline({land, onClose}){
+  const iso2 = land.iso2;
+  const hatGroesste = land.gs && land.gs !== land.hs;
+  const hatLeitung = land.gi.lei && land.gi.lei !== "nicht öffentlich eindeutig auffindbar";
+  const hatBot = land.bot.n && land.bot.n !== "k.A.";
+  const giStandorte = land.gi.st.join("; ");
+  const urlGoethe = "https://www.goethe.de/ins/"+iso2.toLowerCase()+"/de/index.html";
+  const urlBot = "https://www.auswaertiges-amt.de/de/service/laender/"+land.land.toLowerCase().replace(/ /g,"-")+"-node";
+
+  const divider = {borderBottom:"1px solid #E8ECF0"};
+
+  function Row({children}){
+    return(
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,padding:"14px 0",...divider}}>
+        {children}
+      </div>
+    );
+  }
+
+  function Cell({label,children}){
+    return(
+      <div>
+        <div style={{fontSize:10,fontWeight:700,color:"#64748B",letterSpacing:"0.08em",
+          textTransform:"uppercase",marginBottom:5}}>{label}</div>
+        <div style={{fontSize:14,fontWeight:600,color:"#0F172A",lineHeight:1.35}}>{children}</div>
+      </div>
+    );
+  }
+
+  function Sub({children}){
+    return <div style={{fontSize:11,fontWeight:400,color:"#94A3B8",marginTop:3}}>{children}</div>;
+  }
+
+  return(
+    <div style={{background:"#fff",padding:"0 20px 20px",overflowY:"auto",maxHeight:"100%"}}>
+
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",
+        padding:"18px 0 14px",...divider}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#94A3B8",
+            fontSize:18,cursor:"pointer",padding:0,lineHeight:1,fontWeight:600}}>←</button>
+          <h1 style={{fontSize:26,fontWeight:900,color:"#0F172A",margin:0,
+            letterSpacing:"-0.5px"}}>{land.land}</h1>
+        </div>
+        <span style={{fontSize:12,fontWeight:600,color:"#94A3B8",marginTop:6}}>{iso2}</span>
+      </div>
+
+      {/* Hauptstadt | Größte Stadt */}
+      <Row>
+        <Cell label="Hauptstadt">{land.hs}</Cell>
+        {hatGroesste
+          ? <Cell label="Größte Stadt">{land.gs}</Cell>
+          : <div/>}
+      </Row>
+
+      {/* Bevölkerung | Politisches System */}
+      <Row>
+        <Cell label="Bevölkerung">
+          {fmtN(land.bev)}
+          <Sub>Stand 2023</Sub>
+        </Cell>
+        <Cell label="Politisches System">{land.sys}</Cell>
+      </Row>
+
+      {/* Menschenrechte | Pressefreiheit */}
+      <Row>
+        <Cell label="Menschenrechte (Freedom House Score)">
+          {land.mr.s} / 100 — {land.mr.t}
+          <Sub>Freedom in the World 2025, Score statt Rang</Sub>
+        </Cell>
+        <Cell label="Pressefreiheit (RSF)">
+          Rang {land.pf.r} / 180{land.pf.p ? " · Score "+land.pf.p : ""}
+          <Sub>World Press Freedom Index 2025</Sub>
+        </Cell>
+      </Row>
+
+      {/* EPI | HPI */}
+      <Row>
+        <Cell label="Umweltleistung (EPI 2024)">
+          {land.epi&&land.epi.r
+            ? "Rang "+land.epi.r+" / 180 · Score "+land.epi.s
+            : <span style={{color:"#94A3B8"}}>–</span>}
+          {land.epi&&land.epi.r&&<Sub>Environmental Performance Index, Yale 2024</Sub>}
+        </Cell>
+        <Cell label="Glücklicher Planet (HPI 2021)">
+          {land.hpi&&land.hpi.r
+            ? "Rang "+land.hpi.r+" · Score "+land.hpi.s
+            : <span style={{color:"#94A3B8"}}>–</span>}
+          {land.hpi&&land.hpi.r&&<Sub>Happy Planet Index, NEF 2021</Sub>}
+        </Cell>
+      </Row>
+
+
+
+      {/* Goethe-Institut | Botschaft */}
+      <Row>
+        <Cell label="Goethe-Institut">
+          {giStandorte||"–"}
+          {hatLeitung&&(
+            <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #E8ECF0"}}>
+              <div style={{fontSize:14,fontWeight:600,color:"#0F172A"}}>{land.gi.lei}</div>
+              <div style={{fontSize:11,fontWeight:400,color:"#94A3B8",marginTop:2}}>Leitung</div>
+            </div>
+          )}
+        </Cell>
+        <Cell label="Botschaft">
+          {hatBot
+            ? <span>{land.bot.n}{land.bot.o?" — "+land.bot.o:""}</span>
+            : <span style={{color:"#94A3B8"}}>{land.bot.o||"–"}</span>}
+          {hatBot&&land.bot.ti&&land.bot.ti!=="k.A."&&<Sub>{land.bot.ti}</Sub>}
+        </Cell>
+      </Row>
+
+      {/* Quellen */}
+      <div style={{display:"flex",gap:20,paddingTop:14}}>
+        {land.gi.st.length>0&&(
+          <a href={urlGoethe} target="_blank" rel="noopener noreferrer"
+            style={{fontSize:13,color:"#0D9488",fontWeight:500,textDecoration:"none"}}>
+            Quelle Goethe ↗
+          </a>
+        )}
+        <a href={urlBot} target="_blank" rel="noopener noreferrer"
+          style={{fontSize:13,color:"#0D9488",fontWeight:500,textDecoration:"none"}}>
+          Quelle Botschaft ↗
+        </a>
+      </div>
+
+    </div>
+  );
+}
+
+
+function InfoBox({label,v,small}){
+  return(
+    <div style={{background:"#F8FAFC",borderRadius:10,padding:"10px 12px",border:"1px solid #E2E8F0"}}>
+      <div style={{fontSize:10,color:"#94A3B8",marginBottom:2,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>{label}</div>
+      <div style={{fontSize:13,fontWeight:500,color:"#1E293B",lineHeight:1.3}}>{v}</div>
+    </div>
+  );
+}
+
+// ─── TABELLE ─────────────────────────────────────────────────────────────────
+function LaenderTabelle({laender,fp,onZeile}){
+  const freigeschaltet=laender.filter(l=>fp[l.iso2]==="unlocked");
+  if(freigeschaltet.length===0){
+    return(
+      <div style={{padding:"20px",textAlign:"center",color:"#94A3B8",fontSize:13}}>
+        Noch keine Länder freigeschaltet. Klicke auf ein Land auf der Karte!
+      </div>
+    );
+  }
+  return(
+    <div style={{overflowX:"auto"}}>
+      <table>
+        <thead>
+          <tr>
+            <th style={{width:30}}></th>
+            <th>Land</th>
+            <th>Hauptstadt</th>
+            <th>Bevölkerung</th>
+            <th>MR</th>
+            <th>Pressefreiheit</th>
+            <th>GI-Standorte</th>
+            <th>GI-Leitung</th>
+            <th>Botschaft</th>
+            <th>EPI 2024</th>
+            <th>HPI 2021</th>
+            <th>Größte Stadt</th>
+          </tr>
+        </thead>
+        <tbody>
+          {freigeschaltet.map(l=>{
+            const mrc=mrFarbe(l.mr.t);
+            const mrb=mrBg(l.mr.t);
+            const hatLeitung=l.gi.lei&&l.gi.lei!=="nicht öffentlich eindeutig auffindbar";
+            const hatBot=l.bot.n&&l.bot.n!=="k.A.";
+            return(
+              <tr key={l.iso2} onClick={()=>onZeile(l)}
+                style={{cursor:"pointer"}}>
+                <td><Flag iso2={l.iso2} size={18}/></td>
+                <td><span style={{fontWeight:600,color:"#1E293B"}}>{l.land}</span></td>
+                <td>{l.hs}</td>
+                <td style={{whiteSpace:"nowrap"}}>{fmtN(l.bev)}</td>
+                <td>
+                  <span className="badge" style={{background:mrb,color:mrc,fontSize:10}}>
+                    {l.mr.s}/100
+                  </span>
+                </td>
+                <td style={{whiteSpace:"nowrap"}}>Rang #{l.pf.r}{l.pf.p?<span style={{color:"#94A3B8",fontSize:10}}> · {l.pf.p}P</span>:null}</td>
+                <td>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:2}}>
+                    {l.gi.st.slice(0,2).map(s=>(
+                      <span key={s} className="chip" style={{fontSize:10}}>{s.split(" (")[0]}</span>
+                    ))}
+                    {l.gi.st.length>2&&<span style={{fontSize:10,color:"#94A3B8"}}>+{l.gi.st.length-2}</span>}
+                  </div>
+                </td>
+                <td style={{maxWidth:160,color:"#475569"}}>
+                  {hatLeitung?<span style={{fontSize:13}}>{l.gi.lei}</span>:<span style={{color:"#CBD5E1"}}>nicht öffentlich</span>}
+                </td>
+                <td>
+                  {hatBot
+                    ?<div><div style={{fontWeight:500,fontSize:13}}>{l.bot.n}</div>
+                       <div style={{color:"#94A3B8",fontSize:10}}>{l.bot.ti!=="k.A."?l.bot.ti:""}</div></div>
+                    :<span style={{color:"#CBD5E1",fontSize:11}}>{l.bot.o}</span>}
+                </td>
+              
+                <td style={{whiteSpace:"nowrap",fontSize:12}}>{l.epi&&l.epi.r?<span title={"Score "+l.epi.s}>#{l.epi.r}</span>:<span style={{color:"#CBD5E1"}}>–</span>}</td>
+                <td style={{whiteSpace:"nowrap",fontSize:12}}>{l.hpi&&l.hpi.r?<span title={"Score "+l.hpi.s}>#{l.hpi.r}</span>:<span style={{color:"#CBD5E1"}}>–</span>}</td>
+                <td>{l.gs!==l.hs?<span style={{color:"#475569"}}>{l.gs}</span>:<span style={{color:"#CBD5E1"}}>–</span>}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function Footer(){
+  return(
+    <div style={{textAlign:"center",padding:"10px 16px",fontSize:10,color:"#0F172A",
+      borderTop:"1px solid #F1F5F9",background:"#fff",userSelect:"none"}}>
+      Lizenz: CC BY-SA-NC &nbsp;·&nbsp; Urheber: Klaus J. Buß &nbsp;·&nbsp; Daten: Freedom House 2025, RSF 2025, Goethe-Institut, Weltbank 2023
+    </div>
+  );
+}
+function KView({kontinent, laender, fp, setFP, setAllFP, resetFP, onBack}){
+  const [aktiv,  setAktiv]  = useState(null);
+  const [profil, setProfil] = useState(null);
+  const [stats,  setStats]  = useState({richtig:0, versuche:0, perfekt:0});
+  // Ref: welche Schritte wurden bereits versucht? Key = "iso2_schritt"
+  const erstversuchRef = useRef({});
+
+  const frei = laender.filter(l=>fp[l.iso2]==="unlocked").length;
+  const pct  = Math.round(frei/laender.length*100);
+  const cfg  = KFIG[kontinent]||{c:"#6366F1",e:"🌍"};
+  const HEADER_H = 52;
+
+  function klick(land){
+    const s = fp[land.iso2]||"locked";
+    if(s==="unlocked"){ setAktiv(null); setProfil(land); }
+    else { setProfil(null); setAktiv(land); }
+  }
+
+  // onVersuch bekommt jetzt auch den Schritt (1 oder 2)
+  function onVersuch(korrekt, iso2, schritt){
+    setStats(s=>({
+      ...s,
+      versuche: s.versuche + 1,
+      richtig:  korrekt ? s.richtig + 1 : s.richtig,
+    }));
+    const key = iso2 + "_" + schritt;
+    const erster = !erstversuchRef.current[key];
+    erstversuchRef.current[key] = true; // als versucht markieren
+    // Sofort +1 wenn erster Versuch und richtig
+    if(korrekt && erster){
+      setStats(s=>({...s, perfekt: s.perfekt + 1}));
+    }
+  }
+
+  function onFertig(land){
+    setAktiv(null);
+    setTimeout(()=>setProfil(land),100);
+  }
+
+  return(
+    <div style={{minHeight:"100vh",background:"#F5F4ED",fontFamily:"Georgia,'Times New Roman',serif"}}>
+
+      {/* Header */}
+      <div style={{position:"sticky",top:0,zIndex:20,background:"#fff",height:HEADER_H,
+        borderBottom:"1px solid #E2E8F0",display:"flex",alignItems:"center",
+        padding:"0 24px",gap:12,boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
+        <button onClick={()=>{setAktiv(null);setProfil(null);onBack();}}
+          style={{background:"none",border:"none",color:"#64748B",fontSize:13,
+            cursor:"pointer",display:"flex",alignItems:"center",gap:4,padding:"4px 8px",borderRadius:6}}>
+          ← Zurück
+        </button>
+        <div style={{width:1,height:20,background:"#E2E8F0"}}/>
+        <span style={{fontSize:18}}>{cfg.e}</span>
+        <h1 style={{fontSize:16,fontWeight:700,color:"#0F172A",margin:0}}>{kontinent}</h1>
+        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:12,fontWeight:600,color:"#64748B"}}>{frei}/{laender.length} freigeschaltet</span>
+          <div style={{width:90,height:4,background:"#E2E8F0",borderRadius:2}}>
+            <div style={{width:pct+"%",height:4,background:cfg.c,borderRadius:2,transition:"width 0.4s"}}/>
+          </div>
+          {frei>0&&(
+            <button onClick={()=>{resetFP();setAktiv(null);setProfil(null);}}
+              style={{marginLeft:4,padding:"5px 12px",borderRadius:8,
+                border:"2px solid #DC2626",background:"#FEF2F2",
+                fontSize:12,fontWeight:700,color:"#DC2626",cursor:"pointer",
+                whiteSpace:"nowrap"}}
+              onMouseEnter={e=>{e.currentTarget.style.background="#DC2626";e.currentTarget.style.color="#fff";}}
+              onMouseLeave={e=>{e.currentTarget.style.background="#FEF2F2";e.currentTarget.style.color="#DC2626";}}>
+              ↺ Zurücksetzen
+            </button>
+          )}
+          {frei<laender.length&&(
+            <button onClick={()=>setAllFP(laender.map(l=>l.iso2),"unlocked")}
+              style={{marginLeft:12,padding:"5px 12px",borderRadius:8,
+                border:"1px solid #E2E8F0",background:"#F8FAFC",
+                fontSize:12,fontWeight:600,color:"#475569",cursor:"pointer",
+                whiteSpace:"nowrap"}}
+              onMouseEnter={e=>{e.currentTarget.style.background="#F1F5F9";}}
+              onMouseLeave={e=>{e.currentTarget.style.background="#F8FAFC";}}>
+              Keine Lust auf Raten? Alles anzeigen
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Inhalt */}
+      <div style={{maxWidth:1200,margin:"0 auto",padding:"20px 24px"}}>
+
+        {/* Stats-Zeile */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
+          {[
+            {label:"Gelöste Länder",   val:frei+"/"+laender.length},
+            {label:"Richtige Antworten", val:stats.richtig},
+            {label:"Versuche Gesamt",    val:stats.versuche},
+            {label:"Beim ersten Versuch perfekt", val:stats.perfekt},
+          ].map(({label,val})=>(
+            <div key={label} style={{background:"#fff",borderRadius:12,border:"1px solid #E2E8F0",
+              padding:"14px 18px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+              <div style={{fontSize:10,fontWeight:700,color:"#64748B",letterSpacing:"0.08em",
+                textTransform:"uppercase",marginBottom:6}}>{label}</div>
+              <div style={{fontSize:26,fontWeight:900,color:"#0F172A"}}>{val}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Karte + Sidebar */}
+        <div className="kview-split" style={{display:"flex",gap:16,alignItems:"flex-start",marginBottom:24}}>
+
+          {/* Karte */}
+          <div className="kview-map"
+            style={{flex:"0 0 58%",minWidth:0,borderRadius:16,overflow:"hidden",
+              height:"calc(100vh - "+HEADER_H+"px - 156px)"}}>
+            <Karte kontinent={kontinent} laender={laender} fp={fp} onKlick={klick}/>
+          </div>
+
+          {/* Sidebar */}
+          <div className="kview-profil"
+            style={{flex:1,minWidth:280,background:"#fff",borderRadius:16,
+              border:"1px solid #E2E8F0",overflow:"hidden",
+              maxHeight:"calc(100vh - "+HEADER_H+"px - 156px)",overflowY:"auto",
+              boxShadow:"0 1px 6px rgba(0,0,0,0.06)"}}>
+            {aktiv ? (
+              <ErrorBoundary>
+                <QuizPanel key={aktiv.iso2} land={aktiv} laender={laender}
+                  fp={fp} setFP={setFP}
+                  onFertig={onFertig}
+                  onAbbruch={()=>setAktiv(null)}
+                  onVersuch={onVersuch}/>
+              </ErrorBoundary>
+            ) : profil ? (
+              <ProfilInline land={profil} onClose={()=>setProfil(null)}/>
+            ) : (
+              <div style={{padding:"32px 24px",textAlign:"center",color:"#94A3B8"}}>
+                <div style={{fontSize:40,marginBottom:14}}>🗺️</div>
+                <div style={{fontSize:17,fontWeight:700,color:"#475569",marginBottom:8}}>
+                  Wähle ein Land auf der Karte
+                </div>
+                <div style={{fontSize:13,lineHeight:1.5}}>
+                  Klicke ein blaues Land an,<br/>um das Quiz zu starten.
+                </div>
+              </div>
+
+            )}
+          </div>
+        </div>
+
+        {/* Tabelle */}
+        {frei>0&&(
+          <div>
+            <h2 style={{fontSize:20,fontWeight:800,color:"#0F172A",margin:"0 0 4px"}}>Erratene Länder im Überblick</h2>
+            <p style={{fontSize:13,color:"#94A3B8",margin:"0 0 14px"}}>
+              Die Tabelle zeigt nur Länder, die du im Quiz bereits vollständig gelöst hast. So bleiben die übrigen Hauptstädte und Profile verdeckt.
+            </p>
+            <div style={{background:"#fff",borderRadius:12,border:"1px solid #E2E8F0",
+              overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+              <div style={{overflowX:"auto"}}>
+                <LaenderTabelle laender={laender} fp={fp} onZeile={l=>{setAktiv(null);setProfil(l);}}/>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
+      <Footer/>
+    </div>
+  );
+}
+
+
+function Start({onWaehlen, fp}){
+  const freiGesamt = Object.values(fp).filter(v=>v==="unlocked").length;
+  const offenGesamt = Object.values(fp).filter(v=>v==="step2").length;
+  const mitGI = LAENDER.filter(l=>l.gi.st.length>0).length;
+
+  return(
+    <div style={{minHeight:"100vh",background:"#F5F4ED",fontFamily:"Georgia,'Times New Roman',serif"}}>
+
+      {/* ── Header ── */}
+      <div style={{background:"#fff",borderBottom:"1px solid #E2E8F0",
+        padding:"0 32px",height:56,display:"flex",alignItems:"center",
+        position:"sticky",top:0,zIndex:30,boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
+          <span style={{fontSize:22}}>🌐</span>
+          <div>
+            <div style={{fontWeight:800,fontSize:15,color:"#0F172A",lineHeight:1}}>Wir in der Welt</div>
+            <div style={{fontSize:11,color:"#94A3B8",lineHeight:1.2}}>Länder · Hauptstädte · Daten</div>
+          </div>
+        </div>
+        {freiGesamt>0&&(
+          <div style={{display:"flex",alignItems:"center",gap:16}}>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:10,fontWeight:700,color:"#64748B",letterSpacing:"0.08em",textTransform:"uppercase"}}>Fortschritt</div>
+              <div style={{fontSize:15,fontWeight:700,color:"#0F172A"}}>{freiGesamt} / {LAENDER.length} Länder</div>
+            </div>
+            <button onClick={()=>window.location.reload()}
+              style={{padding:"6px 14px",borderRadius:8,border:"1px solid #E2E8F0",
+                background:"#fff",fontSize:13,fontWeight:500,color:"#475569",cursor:"pointer"}}>
+              Zurücksetzen
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Inhalt ── */}
+      <div style={{maxWidth:1100,margin:"0 auto",padding:"40px 32px"}}>
+
+        {/* Titel */}
+        <h1 style={{fontSize:36,fontWeight:900,color:"#0F172A",letterSpacing:"-1px",margin:"0 0 12px"}}>
+          Wo liegt was auf der{" "}
+          <span style={{color:"#0D9488"}}>Weltkarte</span>?
+        </h1>
+        <p style={{fontSize:15,color:"#475569",maxWidth:680,lineHeight:1.6,margin:"0 0 40px"}}>
+          Wähle einen Kontinent und klicke ein Land auf der Karte an. Erkenne das Land, dann seine Hauptstadt — und erfahre danach mehr über Bevölkerung, politisches System, Pressefreiheit, Menschenrechte und Nachhaltigkeit sowie die deutsche Präsenz vor Ort. Zum Quiz sind alle Länder mit Goethe-Präsenz anwählbar.
+        </p>
+
+        {/* Kontinent wählen */}
+        <div style={{marginBottom:32}}>
+          <h2 style={{fontSize:20,fontWeight:800,color:"#0F172A",margin:"0 0 4px"}}>Kontinent wählen</h2>
+          <p style={{fontSize:13,color:"#94A3B8",margin:"0 0 16px"}}>
+            Alle Kontinente sind spielbar. Klicke einen an, um die Karte zu öffnen.
+          </p>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12}}>
+            {Object.entries(KFIG).map(([name,cfg])=>{
+              const l = getKontinentLaender(name);
+              const fr = l.filter(x=>fp[x.iso2]==="unlocked").length;
+              const pct = Math.round(fr/l.length*100);
+              const aktiv = fr>0;
+              return(
+                <button key={name} onClick={()=>onWaehlen(name)}
+                  style={{textAlign:"left",padding:"16px",borderRadius:12,
+                    border:"1px solid "+(aktiv?cfg.c+"55":"#E2E8F0"),
+                    background:aktiv?cfg.c+"11":"#fff",
+                    boxShadow:"0 1px 3px rgba(0,0,0,0.06)",
+                    cursor:"pointer",transition:"all 0.15s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 4px 12px rgba(0,0,0,0.12)";}}
+                  onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.06)";}}>
+                  <div style={{fontSize:24,marginBottom:6}}>{cfg.e}</div>
+                  <div style={{fontWeight:700,fontSize:13,color:"#0F172A",marginBottom:2}}>{name}</div>
+                  <div style={{fontSize:11,color:"#94A3B8",marginBottom:8}}>{l.length} Länder</div>
+                  <div style={{background:"#E8ECF0",borderRadius:999,height:3}}>
+                    <div style={{width:pct+"%",height:3,borderRadius:999,background:cfg.c,transition:"width 0.4s"}}/>
+                  </div>
+                  <div style={{fontSize:10,color:aktiv?cfg.c:"#94A3B8",marginTop:4,fontWeight:600}}>
+                    {aktiv?fr+"/"+l.length+" freigeschaltet":"Spielbar"}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Stats */}
+        {freiGesamt>0&&(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,marginBottom:32}}>
+            {[
+              {label:"Gelöste Länder",val:freiGesamt+"/"+LAENDER.length},
+              {label:"Hauptstadt noch offen",val:offenGesamt},
+              {label:"Länder mit GI-Präsenz",val:mitGI},
+              {label:"Noch zu entdecken",val:LAENDER.length-freiGesamt},
+            ].map(({label,val})=>(
+              <div key={label} style={{background:"#fff",borderRadius:12,
+                border:"1px solid #E2E8F0",padding:"16px 20px",
+                boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
+                <div style={{fontSize:10,fontWeight:700,color:"#64748B",letterSpacing:"0.08em",
+                  textTransform:"uppercase",marginBottom:6}}>{label}</div>
+                <div style={{fontSize:28,fontWeight:900,color:"#0F172A"}}>{val}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+      </div>
+      <Footer/>
+    </div>
+  );
+}
+
+
+function App(){
+  const [ansicht,setAnsicht]=useState("start");
+  const [kontinent,setKontinent]=useState(null);
+  const [fp,setFpState]=useState({});
+  const setFP=useCallback((iso2,status)=>setFpState(p=>({...p,[iso2]:status})),[]);
+  const setAllFP=useCallback((isos,status)=>setFpState(p=>{
+    const n={...p}; isos.forEach(iso2=>n[iso2]=status); return n;
+  }),[]);
+  const resetFP=useCallback(()=>setFpState({}),[]);
+
+  if(ansicht==="k"&&kontinent){
+    return <KView kontinent={kontinent} laender={getKontinentLaender(kontinent)}
+      fp={fp} setFP={setFP} setAllFP={setAllFP} resetFP={resetFP} onBack={()=>setAnsicht("start")}/>;
+  }
+  return <Start onWaehlen={n=>{setKontinent(n);setAnsicht("k");}} fp={fp}/>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
